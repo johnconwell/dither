@@ -1,0 +1,5 @@
+.vscode/
+examples/
+input/
+output/
+*.exe
