@@ -1,0 +1,5 @@
+Algorithm:
+1. create contrast map
+    a. iterate through image and store each pixels gradient, ie. the abs difference between it and the average of its neighbors
+2. order contrast map from highest contrast to lowest contrast
+3. iterate through contrast map and dither each pixel, diffusing error to undithered neighbors (highest contrast first)

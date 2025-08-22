@@ -1,7 +1,11 @@
 #ifndef __COLOR_H
 #define __COLOR_H
 
+#include <cmath>
 #include <cstdint>
+#include <iomanip>
+#include <sstream>
+#include <string>
 
 struct Color
 {
@@ -13,13 +17,25 @@ struct Color
 
     static inline constexpr int CHANNEL_MAX = 255;
 
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-    uint8_t a;
+    int16_t r;
+    int16_t g;
+    int16_t b;
+    int16_t a;
 
     Color();
-    Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+    Color(int16_t r, int16_t g, int16_t b, int16_t a);
+    Color(uint32_t hex_code);
+    bool operator==(const Color& other) const;
+    bool operator<(const Color& other) const;
+    Color operator-(const Color& other) const;
+    Color operator+(const Color& other) const;
+    Color operator*(const double scalar) const;
+    uint32_t hex();
+
+    int distance_squared(Color other);
+    double distance(Color other);
+
+    std::string to_string();
 };
 
 #endif

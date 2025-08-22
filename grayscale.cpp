@@ -12,11 +12,11 @@ const std::unordered_map<GrayscaleMethod, const double*> Grayscale::weights = {
 };
 
 // returns single channel grayscale value of color using specified grayscale method
-uint8_t Grayscale::channel_value(Color color, GrayscaleMethod method)
+int16_t Grayscale::channel_value(Color color, GrayscaleMethod method)
 {
     const double* grayscale_weights = Grayscale::weights.at(method);
     double component_r = double(color.r) * grayscale_weights[Color::INDEX_R];
     double component_g = double(color.g) * grayscale_weights[Color::INDEX_G];
     double component_b = double(color.b) * grayscale_weights[Color::INDEX_B];
-    return uint8_t(component_r + component_g + component_b);
+    return int16_t(component_r + component_g + component_b);
 }

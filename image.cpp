@@ -7,6 +7,16 @@ Image::Image()
     pixels.resize(0);
     width = 0;
     height = 0;
+    return;
+}
+
+// erases all image data and reinitializes object
+void Image::clear()
+{
+    pixels.resize(0);
+    width = 0;
+    height = 0;
+    return;
 }
 
 // returns image's width
@@ -24,6 +34,8 @@ unsigned int Image::get_height()
 // loads a png from the specified path
 unsigned int Image::load(const char* file_name)
 {
+    clear();
+    
     unsigned error = lodepng::decode(pixels, width, height, file_name);
 
     if(error)
@@ -67,4 +79,5 @@ void Image::set_pixel(Color color, int x, int y)
     pixels[index_start + Color::INDEX_G] = color.g;
     pixels[index_start + Color::INDEX_B] = color.b;
     pixels[index_start + Color::INDEX_A] = color.a;
+    return;
 }

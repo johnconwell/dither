@@ -14,6 +14,7 @@ private:
 
 public:
     Image();
+    void clear();
     unsigned int get_width();
     unsigned int get_height();
     unsigned int load(const char* file_name);

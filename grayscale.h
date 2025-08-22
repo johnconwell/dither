@@ -17,8 +17,6 @@ enum GrayscaleMethod
     CHANNEL_GB
 };
 
-
-
 struct Grayscale
 {
     static inline constexpr double STANDARD[Color::NUM_BYTES_COLOR] = {0.3334, 0.3333, 0.3333, 1.0};
@@ -32,7 +30,7 @@ struct Grayscale
 
     static const std::unordered_map<GrayscaleMethod, const double*> weights;
 
-    static uint8_t channel_value(Color color, GrayscaleMethod method);
+    static int16_t channel_value(Color color, GrayscaleMethod method);
 };
 
 
