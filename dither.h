@@ -20,6 +20,7 @@ private:
 
     void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
     void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
+    
 
 public:
     Dither();
@@ -29,6 +30,7 @@ public:
     void grayscale(GrayscaleMethod method);
     void reduce();
     void error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate);
+    void error_diffusion_grayscale_standard(ErrorDiffusionAlgorithm algorithm);
     
 };
 

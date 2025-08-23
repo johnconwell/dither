@@ -34,6 +34,9 @@ struct Color
 
     int distance_squared(Color other);
     double distance(Color other);
+    int distance_redmean_squared(Color other);
+    double distance_redmean(Color other);
+    int distance_grayscale(Color other);
 
     std::string to_string();
 };

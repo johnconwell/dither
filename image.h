@@ -21,6 +21,7 @@ public:
     unsigned int save(const char* file_name);
     Color get_pixel(int x, int y);
     void set_pixel(Color color, int x, int y);
+    std::vector<std::vector<int>> gradient_map();
 };
 
 #endif

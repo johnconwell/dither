@@ -9,6 +9,7 @@
 
 enum PresetPalette
 {
+    BLACK_WHITE,
     _1BIT_MONITOR_GLOW,
     TWILIGHT5
 };
@@ -20,6 +21,7 @@ private:
     std::vector<Color> colors;
 
 public:
+    static inline const std::vector<Color> BLACK_WHITE = {Color(0x000000ff), Color(0xffffffff)};
     static inline const std::vector<Color> _1BIT_MONITOR_GLOW = {Color(0x222323ff), Color(0xf0f6f0ff)};
     static inline const std::vector<Color> TWILIGHT5 = {Color(0x292831ff), Color(0x333f58ff), Color(0x4a7a96ff), Color(0xee8695ff), Color(0xfbbbadff)};
 
@@ -33,6 +35,7 @@ public:
     void remove_color(Color color);
     void sort();
     Color nearest(Color color);
+    Color nearest_grayscale(Color color);
 
     std::string to_string();
 };

@@ -2,6 +2,7 @@
 #include <string>
 
 const std::unordered_map<PresetPalette, std::vector<Color>> Palette::preset_palettes = {
+    {PresetPalette::BLACK_WHITE, Palette::BLACK_WHITE},
     {PresetPalette::_1BIT_MONITOR_GLOW, Palette::_1BIT_MONITOR_GLOW},
     {PresetPalette::TWILIGHT5, Palette::TWILIGHT5}
 };
@@ -87,6 +88,25 @@ Color Palette::nearest(Color color)
         if(distance_squared < distance_squared_nearest)
         {
             distance_squared_nearest = distance_squared;
+            index_nearest = index_palette;
+        }
+    }
+
+    return colors[index_nearest];
+}
+
+// returns the palette color nearest to the specified color, assuming both colors are grayscale
+Color Palette::nearest_grayscale(Color color)
+{
+    int index_nearest = -1;
+    int distance_nearest = INT_MAX;
+
+    for(int index_palette = 0; index_palette < colors.size(); index_palette++)
+    {
+        int distance = color.distance_grayscale(colors[index_palette]);
+        if(distance < distance_nearest)
+        {
+            distance_nearest = distance;
             index_nearest = index_palette;
         }
     }

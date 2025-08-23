@@ -81,3 +81,20 @@ void Image::set_pixel(Color color, int x, int y)
     pixels[index_start + Color::INDEX_A] = color.a;
     return;
 }
+
+// returns a width x height sized array where each cell is the gradient of the corresponding pixel on the image
+// gradient is the difference between the current pixel and the average of neighbors
+std::vector<std::vector<int>> Image::gradient_map()
+{
+    std::vector<std::vector<int>> gm(width, std::vector<int>(height, 0));
+
+    for(int y = 0; y < height; y++)
+    {
+        for(int x = 0; x < width; x++)
+        {
+            
+        }
+    }
+
+    return gm;
+}
