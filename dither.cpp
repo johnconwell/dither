@@ -1,6 +1,7 @@
 #include "dither.h"
 #include <iostream>
 #include <string>
+
 // initializes empty image and palette
 Dither::Dither()
 {
@@ -197,44 +198,3 @@ void Dither::error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm)
 }
 
 
-// dithers using specified algorithm, does not alternate direction on odd rows
-// assumes the image is grayscale
-void Dither::error_diffusion_grayscale_standard(ErrorDiffusionAlgorithm algorithm)
-{
-    // initialize error containers
-    Error error = Error(algorithm);
-    std::vector<std::vector<int>> error_matrix(image.get_height(), std::vector<int>(image.get_width(), 0));
-
-    for(int y = 0; y < image.get_height(); y++)
-    {
-        for(int x = 0; x < image.get_width(); x++)
-        {
-            // set current pixel to nearest palette color (accounting for accumulated error)
-            Color color = image.get_pixel(x, y);
-            color.r += error_matrix[y][x];
-            Color palette_nearest = palette.nearest_grayscale(color);
-
-            // std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
-            // double distance = color.distance_redmean(palette_nearest);
-            // std::vector<int> current_pixel_error = {int(distance / 3.0), int(distance / 3.0), int(distance / 3.0)};
-            int current_pixel_error = palette_nearest.distance_grayscale(color);
-
-            for(int index_error = 0; index_error < error.coordinates.size(); index_error++)
-            {
-                int new_x = x + error.coordinates[index_error].first;
-                int new_y = y + error.coordinates[index_error].second;
-
-                if(new_x < 0 || new_x >= image.get_width() || new_y < 0 || new_y >= image.get_height())
-                {
-                    continue;
-                }
-
-                error_matrix[new_y][new_x] += int(current_pixel_error * error.scalars[error.coordinates[index_error]]);
-            }
-
-            image.set_pixel(palette_nearest, x, y);
-        }
-    }
-
-    return;
-}

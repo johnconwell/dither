@@ -5,6 +5,7 @@
 #include "grayscale.h"
 #include "image.h"
 #include "lodepng.h"
+#include "ordered.h"
 #include "palette.h"
 #include <iostream>
 #include <vector>
@@ -20,7 +21,6 @@ private:
 
     void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
     void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
-    
 
 public:
     Dither();
@@ -30,8 +30,7 @@ public:
     void grayscale(GrayscaleMethod method);
     void reduce();
     void error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate);
-    void error_diffusion_grayscale_standard(ErrorDiffusionAlgorithm algorithm);
-    
+    void ordered(OrderedAlgorithm algorithm);
 };
 
 

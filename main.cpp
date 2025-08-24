@@ -8,13 +8,22 @@
 
 void error_diffusion_all(std::string file_name, Palette palette);
 
+
+
+
 int main()
 {
     Palette palette_black_white = Palette("BLACK_WHITE", Palette::preset_palettes.at(PresetPalette::BLACK_WHITE));
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
     Palette palette_twilight5 = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
 
-    error_diffusion_all("statue", palette_black_white);
+    int size = 16;
+    // error_diffusion_all("statue", palette_black_white);
+    Ordered ordered = Ordered();
+    ordered.white_noise(size);
+    std::cout << ordered.to_string() << std::endl;
+
+    
 
 
     std::cout << "finished" << std::endl;
@@ -45,20 +54,12 @@ void error_diffusion_all(std::string file_name, Palette palette)
     dither.save((file_path_output + "_linear_alternate.png").c_str());
 
     dither.load(file_path_input.c_str());
-    dither.error_diffusion_grayscale_standard(ErrorDiffusionAlgorithm::LINEAR);
-    dither.save((file_path_output + "_linear_grayscale_standard.png").c_str());
-
-    dither.load(file_path_input.c_str());
     dither.error_diffusion(ErrorDiffusionAlgorithm::FLOYD_STEINBERG, false);
     dither.save((file_path_output + "_floyd_steinberg_standard.png").c_str());
 
     dither.load(file_path_input.c_str());
     dither.error_diffusion(ErrorDiffusionAlgorithm::FLOYD_STEINBERG, true);
     dither.save((file_path_output + "_floyd_steinberg_alternate.png").c_str());
-
-    dither.load(file_path_input.c_str());
-    dither.error_diffusion_grayscale_standard(ErrorDiffusionAlgorithm::FLOYD_STEINBERG);
-    dither.save((file_path_output + "_floyd_steinberg_grayscale_standard.png").c_str());
 
     dither.load(file_path_input.c_str());
     dither.error_diffusion(ErrorDiffusionAlgorithm::JARVICE_JUDICE_NINKE, false);
