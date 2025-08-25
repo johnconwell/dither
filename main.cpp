@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
+#include <time.h>
 #include <vector>
+#include "blue_noise.h"
 #include "dither.h"
 #include "error.h"
 #include "grayscale.h"
@@ -13,17 +15,44 @@ void error_diffusion_all(std::string file_name, Palette palette);
 
 int main()
 {
+    srand(time(NULL));
     Palette palette_black_white = Palette("BLACK_WHITE", Palette::preset_palettes.at(PresetPalette::BLACK_WHITE));
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
     Palette palette_twilight5 = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
 
     int size = 16;
     // error_diffusion_all("statue", palette_black_white);
-    Ordered ordered = Ordered();
-    ordered.white_noise(size);
-    std::cout << ordered.to_string() << std::endl;
+    // Ordered ordered = Ordered();
+    // ordered.white_noise(size);
+    // std::cout << ordered.to_string() << std::endl;
 
-    
+    BlueNoise blue_noise = BlueNoise(8, 8, 1.5, 0.1);
+
+    blue_noise.generate_initial_binary_pattern();
+
+    std::cout << "intiial binary pattern:" << std::endl;
+    std::cout << blue_noise.to_string_binary_pattern_initial() << std::endl;
+
+    blue_noise.generate_dither_array_phase_1();
+
+    std::cout << "prototype binary pattern 1:" << std::endl;
+    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
+    std::cout << "dither array 1:" << std::endl;
+    std::cout << blue_noise.to_string_dither_array() << std::endl;
+
+    blue_noise.generate_dither_array_phase_2();
+
+    std::cout << "prototype binary pattern 2:" << std::endl;
+    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
+    std::cout << "dither array 2:" << std::endl;
+    std::cout << blue_noise.to_string_dither_array() << std::endl;
+
+    blue_noise.generate_dither_array_phase_3();
+
+    std::cout << "prototype binary pattern 3:" << std::endl;
+    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
+    std::cout << "dither array 3:" << std::endl;
+    std::cout << blue_noise.to_string_dither_array() << std::endl;
 
 
     std::cout << "finished" << std::endl;

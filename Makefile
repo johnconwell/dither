@@ -1,6 +1,6 @@
 CC = g++
 
-OBJS = color.cpp dither.cpp error.cpp grayscale.cpp image.cpp lodepng.cpp main.cpp ordered.cpp palette.cpp
+OBJS = blue_noise.cpp color.cpp dither.cpp error.cpp grayscale.cpp image.cpp lodepng.cpp main.cpp ordered.cpp palette.cpp
 
 OBJ_NAME = main
 
