@@ -31,11 +31,14 @@ public:
     BlueNoise();
     BlueNoise(int width, int height, double sigma, double coverage);
 
+    std::vector<std::vector<int>> get_dither_array();
+
     void kernel_gaussian(double sigma, int width, int height);
+    void generate_initial_binary_pattern();
     void generate_dither_array_phase_1();
     void generate_dither_array_phase_2();
     void generate_dither_array_phase_3();
-    void generate_initial_binary_pattern();
+    void normalize_dither_array(int output_levels);
     std::pair<int, int> get_tightest_cluster(std::vector<std::vector<int>> binary_pattern);
     std::pair<int, int> get_largest_void(std::vector<std::vector<int>> binary_pattern);
     double gaussian_value(std::vector<std::vector<int>> binary_pattern, int x, int y);

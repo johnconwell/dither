@@ -28,6 +28,88 @@ BlueNoise::BlueNoise(int width, int height, double sigma, double coverage)
     return;
 }
 
+std::vector<std::vector<int>> BlueNoise::get_dither_array()
+{
+    return dither_array;
+}
+
+// generates the initial binary pattern by randomly placing (width * height * coverage) ones, then evenly spacing them using void and cluster algorithm
+// also fills and updates minority/majority pixel arrays
+void BlueNoise::generate_initial_binary_pattern()
+{
+    int height = binary_pattern_initial.size();
+    int width = binary_pattern_initial[0].size();
+    int num_pixels = height * width;
+    int num_minority_pixels = num_pixels * coverage;
+    std::vector<std::pair<int, int>> remaining_coordinates = std::vector<std::pair<int, int>>(num_pixels, {-1, -1});
+    std::vector<std::pair<int, int>>::iterator coordinate_position;
+
+    // fill remaining_coordinates with all coordinates in the binary pattern matrix
+    for(int y = 0; y < height; y++)
+    {
+        for(int x = 0; x < width; x++)
+        {
+            int index_remaining_coordinates = index(x, y, width, height);
+            remaining_coordinates[index(x, y, width, height)].first = x;
+            remaining_coordinates[index(x, y, width, height)].second = y;
+        }
+    }
+
+    // shuffle remaining coordinates array
+    for(int index_remaining_coordinates = num_pixels - 1; index_remaining_coordinates >= 0; index_remaining_coordinates--)
+    {
+        int index_random = rand() % (index_remaining_coordinates + 1);
+        std::pair<int, int> temp = remaining_coordinates[index_remaining_coordinates];
+        remaining_coordinates[index_remaining_coordinates] = remaining_coordinates[index_random];
+        remaining_coordinates[index_random] = temp;
+    }
+
+    // fill binary pattern with num_minority_pixels minority pixels (ones)
+    // also fill minority_pixels and majority_pixels arrays
+    for(int index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
+    {
+        std::pair<int, int> coordinate = remaining_coordinates[index_remaining_coordinates];
+        if(index_remaining_coordinates < num_minority_pixels)
+        {
+            binary_pattern_initial[coordinate.second][coordinate.first] = 1;
+            minority_pixels.push_back(coordinate);
+        }
+        else
+        {
+            // binary pattern pixels are already initialized to 0, so no need to do that now
+            majority_pixels.push_back(coordinate);
+        }
+    }
+    
+    int count = 0;
+    while(count < 1000)
+    {
+        // find the tightest cluster and remove it
+        std::pair<int, int> coordinate_tightest_cluster = get_tightest_cluster(binary_pattern_initial);
+        binary_pattern_initial[coordinate_tightest_cluster.second][coordinate_tightest_cluster.first] = 0;
+        coordinate_position = std::find(minority_pixels.begin(), minority_pixels.end(), coordinate_tightest_cluster);
+        minority_pixels.erase(coordinate_position);
+        majority_pixels.push_back(coordinate_tightest_cluster);
+
+        // find the largest void and fill it
+        std::pair<int, int> coordinate_largest_void = get_largest_void(binary_pattern_initial);
+        binary_pattern_initial[coordinate_largest_void.second][coordinate_largest_void.first] = 1;
+        coordinate_position = std::find(majority_pixels.begin(), majority_pixels.end(), coordinate_largest_void);
+        majority_pixels.erase(coordinate_position);
+        minority_pixels.push_back(coordinate_largest_void);
+
+        // exit condition when removing the tightest cluster creates the largest void
+        if((coordinate_tightest_cluster.first == coordinate_largest_void.first) && (coordinate_tightest_cluster.second == coordinate_largest_void.second))
+        {
+            break;
+        }
+
+        count += 1;
+    }
+
+    return;
+}
+
 // generates the values in dither array from 0 to (ones - 1) (number of 1s in initial binary pattern minus 1)
 void BlueNoise::generate_dither_array_phase_1()
 {
@@ -84,7 +166,7 @@ void BlueNoise::generate_dither_array_phase_3()
     int width = dither_array[0].size();
     int num_pixels = width * height;
     int num_pixels_half = num_pixels / 2;
-    int rank = num_pixels_half + 1;
+    int rank = num_pixels_half;
 
     // TODO: make functions to regenerate minority/majority pixel arrays
     // these are not wokring for some reason
@@ -110,78 +192,19 @@ void BlueNoise::generate_dither_array_phase_3()
     return;
 }
 
-// generates the initial binary pattern by randomly placing (width * height * coverage) ones, then evenly spacing them using void and cluster algorithm
-// also fills and updates minority/majority pixel arrays
-void BlueNoise::generate_initial_binary_pattern()
-{
-    int height = binary_pattern_initial.size();
-    int width = binary_pattern_initial[0].size();
-    int num_pixels = height * width;
-    int num_minority_pixels = num_pixels * coverage;
-    std::vector<std::pair<int, int>> remaining_coordinates = std::vector<std::pair<int, int>>(num_pixels, {-1, -1});
-    std::vector<std::pair<int, int>>::iterator coordinate_position;
 
-    // fill remaining_coordinates with all coordinates in the binary pattern matrix
+void BlueNoise::normalize_dither_array(int output_levels)
+{
+    int height = dither_array.size();
+    int width = dither_array[0].size();
+    int num_pixels = height * width;
+
     for(int y = 0; y < height; y++)
     {
         for(int x = 0; x < width; x++)
         {
-            int index_remaining_coordinates = index(x, y, width, height);
-            remaining_coordinates[index(x, y, width, height)].first = x;
-            remaining_coordinates[index(x, y, width, height)].second = y;
+            dither_array[y][x] *= double(output_levels) / double(num_pixels);
         }
-    }
-
-    // shuffle remaining coordinates array
-    for(int index_remaining_coordinates = num_pixels - 1; index_remaining_coordinates >= 0; index_remaining_coordinates--)
-    {
-        int index_random = rand() % (index_remaining_coordinates + 1);
-        std::pair<int, int> temp = remaining_coordinates[index_remaining_coordinates];
-        remaining_coordinates[index_remaining_coordinates] = remaining_coordinates[index_random];
-        remaining_coordinates[index_random] = temp;
-    }
-
-    // fill binary pattern with num_minority_pixels minority pixels (ones)
-    // also fill minority_pixels and majority_pixels arrays
-    for(int index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
-    {
-        std::pair<int, int> coordinate = remaining_coordinates[index_remaining_coordinates];
-        if(index_remaining_coordinates < num_minority_pixels)
-        {
-            binary_pattern_initial[coordinate.second][coordinate.first] = 1;
-            minority_pixels.push_back(coordinate);
-        }
-        else
-        {
-            // binary pattern pixels are already initialized to 0, so no need to do that now
-            majority_pixels.push_back(coordinate);
-        }
-    }
-    
-    int count = 0;
-    while(count < 100)
-    {
-        // find the tightest cluster and remove it
-        std::pair<int, int> coordinate_tightest_cluster = get_tightest_cluster(binary_pattern_initial);
-        binary_pattern_initial[coordinate_tightest_cluster.second][coordinate_tightest_cluster.first] = 0;
-        coordinate_position = std::find(minority_pixels.begin(), minority_pixels.end(), coordinate_tightest_cluster);
-        minority_pixels.erase(coordinate_position);
-        majority_pixels.push_back(coordinate_tightest_cluster);
-
-        // find the largest void and fill it
-        std::pair<int, int> coordinate_largest_void = get_largest_void(binary_pattern_initial);
-        binary_pattern_initial[coordinate_largest_void.second][coordinate_largest_void.first] = 1;
-        coordinate_position = std::find(majority_pixels.begin(), majority_pixels.end(), coordinate_largest_void);
-        majority_pixels.erase(coordinate_position);
-        minority_pixels.push_back(coordinate_largest_void);
-
-        // exit condition when removing the tightest cluster creates the largest void
-        if((coordinate_tightest_cluster.first == coordinate_largest_void.first) && (coordinate_tightest_cluster.second == coordinate_largest_void.second))
-        {
-            break;
-        }
-
-        count += 1;
     }
 
     return;
@@ -262,11 +285,25 @@ void BlueNoise::load_binary_pattern()
     int height = binary_pattern_initial.size();
     int width = binary_pattern_initial[0].size();
 
+    minority_pixels.resize(0);
+    majority_pixels.resize(0);
+
     for(int y = 0; y < height; y++)
     {
         for(int x = 0; x < width; x++)
         {
+            std::pair<int, int> coordinate(x, y);
+
             binary_pattern_prototype[y][x] = binary_pattern_initial[y][x];
+
+            if(binary_pattern_prototype[y][x] == 1)
+            {
+                minority_pixels.push_back(coordinate);
+            }
+            else
+            {
+                majority_pixels.push_back(coordinate);
+            }
         }
     }
 

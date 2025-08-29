@@ -22,6 +22,7 @@ public:
     Color get_pixel(int x, int y);
     void set_pixel(Color color, int x, int y);
     std::vector<std::vector<int>> gradient_map();
+    void create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
 };
 
 #endif

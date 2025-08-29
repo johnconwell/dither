@@ -6,16 +6,28 @@ Ordered::Ordered()
 }
 
 // fills threshold_matrix with a size x size bayer matrix
-void Ordered::bayer_matrix(int size)
+void Ordered::bayer_matrix(int size, int output_levels)
 {
-    // std::vector<std::vector<int>> matrix(size, std::vector<int>(size, 0));
     threshold_matrix = std::vector<std::vector<int>>(size, std::vector<int>(size, 0));
     _bayer_matrix(0, 0, size, 0, 1, threshold_matrix);
+
+    // normalize threshold matrix
+    int height = threshold_matrix.size();
+    int width = threshold_matrix[0].size();
+    int num_pixels = height * width;
+
+    for(int y = 0; y < height; y++)
+    {
+        for(int x = 0; x < width; x++)
+        {
+            threshold_matrix[y][x] *= double(output_levels) / double(num_pixels);
+        }
+    }
     return;
 }
 
 // fills threshold_matrix with a size x size matrix of randomly distributed values between 0-255
-void Ordered::white_noise(int size)
+void Ordered::white_noise(int size, int output_levels)
 {
     threshold_matrix = std::vector<std::vector<int>>(size, std::vector<int>(size, 0));
 
@@ -23,7 +35,7 @@ void Ordered::white_noise(int size)
     {
         for(int x = 0; x < size; x++)
         {
-            threshold_matrix[y][x] = rand() % Color::CHANNEL_MAX;
+            threshold_matrix[y][x] = rand() % output_levels;
         }
     }
 

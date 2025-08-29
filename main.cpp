@@ -1,15 +1,16 @@
-#include <iostream>
-#include <string>
-#include <time.h>
-#include <vector>
 #include "blue_noise.h"
 #include "dither.h"
 #include "error.h"
 #include "grayscale.h"
+#include "ordered.h"
 #include "palette.h"
+#include <iostream>
+#include <string>
+#include <time.h>
+#include <vector>
 
 void error_diffusion_all(std::string file_name, Palette palette);
-
+void generate_bayer_matrixes();
 
 
 
@@ -20,13 +21,13 @@ int main()
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
     Palette palette_twilight5 = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
 
-    int size = 16;
+    // int size = 16;
     // error_diffusion_all("statue", palette_black_white);
     // Ordered ordered = Ordered();
     // ordered.white_noise(size);
     // std::cout << ordered.to_string() << std::endl;
 
-    BlueNoise blue_noise = BlueNoise(8, 8, 1.5, 0.1);
+    BlueNoise blue_noise = BlueNoise(32, 32, 0.4, 0.1);
 
     blue_noise.generate_initial_binary_pattern();
 
@@ -54,6 +55,15 @@ int main()
     std::cout << "dither array 3:" << std::endl;
     std::cout << blue_noise.to_string_dither_array() << std::endl;
 
+    blue_noise.normalize_dither_array(Color::CHANNEL_MAX + 1);
+    std::cout << "dither array 4:" << std::endl;
+    std::cout << blue_noise.to_string_dither_array() << std::endl;
+
+    Image image = Image();
+    image.create_from_threshold_matrix(blue_noise.get_dither_array());
+    image.save("output\\blue_noise_32x32.png");
+
+    generate_bayer_matrixes();
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -145,4 +155,30 @@ void error_diffusion_all(std::string file_name, Palette palette)
     dither.load(file_path_input.c_str());
     dither.error_diffusion(ErrorDiffusionAlgorithm::SIERRA_LITE, true);
     dither.save((file_path_output + "_sierra_lite_alternate.png").c_str());
+}
+
+void generate_bayer_matrixes()
+{
+    Image image = Image();
+    Ordered ordered = Ordered();
+
+    ordered.bayer_matrix(2, Color::CHANNEL_MAX + 1);
+    image.create_from_threshold_matrix(ordered.threshold_matrix);
+    image.save("output\\bayer_2x2.png");
+
+    ordered.bayer_matrix(4, Color::CHANNEL_MAX + 1);
+    image.create_from_threshold_matrix(ordered.threshold_matrix);
+    image.save("output\\bayer_4x4.png");
+
+    ordered.bayer_matrix(8, Color::CHANNEL_MAX + 1);
+    image.create_from_threshold_matrix(ordered.threshold_matrix);
+    image.save("output\\bayer_8x8.png");
+
+    ordered.bayer_matrix(16, Color::CHANNEL_MAX + 1);
+    image.create_from_threshold_matrix(ordered.threshold_matrix);
+    image.save("output\\bayer_16x16.png");
+
+    ordered.bayer_matrix(32, Color::CHANNEL_MAX + 1);
+    image.create_from_threshold_matrix(ordered.threshold_matrix);
+    image.save("output\\bayer_32x32.png");
 }

@@ -98,3 +98,25 @@ std::vector<std::vector<int>> Image::gradient_map()
 
     return gm;
 }
+
+// fills image with a grayscale representation of specified threshold map
+void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix)
+{
+    height = threshold_matrix.size();
+    width = threshold_matrix[0].size();
+    pixels.resize(width * height * 4);
+
+    for(int y = 0; y < height; y++)
+    {
+        for(int x = 0; x < width; x++)
+        {
+            int index_pixels = 4 * width * y + 4 * x;
+            pixels[index_pixels + 0] = threshold_matrix[y][x];
+            pixels[index_pixels + 1] = threshold_matrix[y][x];
+            pixels[index_pixels + 2] = threshold_matrix[y][x];
+            pixels[index_pixels + 3] = Color::CHANNEL_MAX;
+        }
+    }
+
+    return;
+}

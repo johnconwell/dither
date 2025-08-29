@@ -88,8 +88,8 @@ public:
     std::vector<std::vector<int>> threshold_matrix;
 
     Ordered();
-    void bayer_matrix(int size);
-    void white_noise(int size);
+    void bayer_matrix(int size, int output_levels);
+    void white_noise(int size, int output_levels);
     void blue_noise(int size);
     std::string to_string();
 
