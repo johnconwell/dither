@@ -11,8 +11,7 @@
 
 void error_diffusion_all(std::string file_name, Palette palette);
 void generate_bayer_matrixes();
-
-
+void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels);
 
 int main()
 {
@@ -27,43 +26,45 @@ int main()
     // ordered.white_noise(size);
     // std::cout << ordered.to_string() << std::endl;
 
-    BlueNoise blue_noise = BlueNoise(32, 32, 0.4, 0.1);
+    // generate_bayer_matrixes();
 
-    blue_noise.generate_initial_binary_pattern();
+    double sigma = 1.9;
+    double coverage = 0.1;
+    int output_levels = Color::CHANNEL_MAX + 1;
 
-    std::cout << "intiial binary pattern:" << std::endl;
-    std::cout << blue_noise.to_string_binary_pattern_initial() << std::endl;
+    clock_t time_start = clock();
 
-    blue_noise.generate_dither_array_phase_1();
+    generate_blue_noise(8, 8, sigma, coverage, output_levels);
 
-    std::cout << "prototype binary pattern 1:" << std::endl;
-    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
-    std::cout << "dither array 1:" << std::endl;
-    std::cout << blue_noise.to_string_dither_array() << std::endl;
+    clock_t time_8x8 = clock();
 
-    blue_noise.generate_dither_array_phase_2();
+    generate_blue_noise(16, 16, sigma, coverage, output_levels);
 
-    std::cout << "prototype binary pattern 2:" << std::endl;
-    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
-    std::cout << "dither array 2:" << std::endl;
-    std::cout << blue_noise.to_string_dither_array() << std::endl;
+    clock_t time_16x16 = clock();
 
-    blue_noise.generate_dither_array_phase_3();
+    generate_blue_noise(32, 32, sigma, coverage, output_levels);
 
-    std::cout << "prototype binary pattern 3:" << std::endl;
-    std::cout << blue_noise.to_string_binary_pattern_prototype() << std::endl;
-    std::cout << "dither array 3:" << std::endl;
-    std::cout << blue_noise.to_string_dither_array() << std::endl;
+    clock_t time_32x32 = clock();
 
-    blue_noise.normalize_dither_array(Color::CHANNEL_MAX + 1);
-    std::cout << "dither array 4:" << std::endl;
-    std::cout << blue_noise.to_string_dither_array() << std::endl;
+    generate_blue_noise(64, 64, sigma, coverage, output_levels);
 
-    Image image = Image();
-    image.create_from_threshold_matrix(blue_noise.get_dither_array());
-    image.save("output\\blue_noise_32x32.png");
+    clock_t time_64x64 = clock();
 
-    generate_bayer_matrixes();
+    generate_blue_noise(128, 128, sigma, coverage, output_levels);
+
+    clock_t time_128x128 = clock();
+
+    generate_blue_noise(256, 256, sigma, coverage, output_levels);
+
+    clock_t time_end = clock();
+
+    std::cout << "Total time: " << 1000.0 * (time_end - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "8x8 time: " << 1000.0 * (time_8x8 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "16x16 time: " << 1000.0 * (time_16x16 - time_8x8) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "32x32 time: " << 1000.0 * (time_32x32 - time_16x16) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "64x64 time: " << 1000.0 * (time_64x64 - time_32x32) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "128x128 time: " << 1000.0 * (time_128x128 - time_64x64) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "256x256 time: " << 1000.0 * (time_end - time_128x128) / CLOCKS_PER_SEC << " ms" << std::endl;
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -155,6 +156,8 @@ void error_diffusion_all(std::string file_name, Palette palette)
     dither.load(file_path_input.c_str());
     dither.error_diffusion(ErrorDiffusionAlgorithm::SIERRA_LITE, true);
     dither.save((file_path_output + "_sierra_lite_alternate.png").c_str());
+
+    return;
 }
 
 void generate_bayer_matrixes()
@@ -181,4 +184,20 @@ void generate_bayer_matrixes()
     ordered.bayer_matrix(32, Color::CHANNEL_MAX + 1);
     image.create_from_threshold_matrix(ordered.threshold_matrix);
     image.save("output\\bayer_32x32.png");
+
+    return;
+}
+
+void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels)
+{
+    BlueNoise blue_noise = BlueNoise(width, height, sigma, coverage, output_levels);
+    Image image = Image();
+    std::string file_name = "output\\blue_noise_" + std::to_string(width) + "x" + std::to_string(height) + "_s" + std::to_string(sigma) + ".png";
+
+    blue_noise.generate_dither_array();
+
+    image.create_from_threshold_matrix(blue_noise.get_dither_array());
+    image.save(file_name.c_str());
+
+    return;
 }
