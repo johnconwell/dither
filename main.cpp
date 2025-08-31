@@ -4,21 +4,30 @@
 #include "grayscale.h"
 #include "ordered.h"
 #include "palette.h"
+#include <format>
 #include <iostream>
 #include <string>
 #include <time.h>
 #include <vector>
 
 void error_diffusion_all(std::string file_name, Palette palette);
-void generate_bayer_matrixes();
+void generate_bayer(int size, int output_levels);
+void generate_bayer_all(int output_levels);
 void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels);
+void generate_blue_noise_all(double sigma, double coverage, int output_levels);
 
 int main()
 {
     srand(time(NULL));
+
     Palette palette_black_white = Palette("BLACK_WHITE", Palette::preset_palettes.at(PresetPalette::BLACK_WHITE));
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
     Palette palette_twilight5 = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
+
+    int output_levels = Color::CHANNEL_MAX + 1;
+    double sigma = 1.9;
+    double coverage = 0.05;
+    
 
     // int size = 16;
     // error_diffusion_all("statue", palette_black_white);
@@ -26,45 +35,13 @@ int main()
     // ordered.white_noise(size);
     // std::cout << ordered.to_string() << std::endl;
 
-    // generate_bayer_matrixes();
+    generate_bayer_all(output_levels);
+    generate_blue_noise_all(sigma, coverage, output_levels);
 
-    double sigma = 1.9;
-    double coverage = 0.1;
-    int output_levels = Color::CHANNEL_MAX + 1;
+    
 
-    clock_t time_start = clock();
 
-    generate_blue_noise(8, 8, sigma, coverage, output_levels);
-
-    clock_t time_8x8 = clock();
-
-    generate_blue_noise(16, 16, sigma, coverage, output_levels);
-
-    clock_t time_16x16 = clock();
-
-    generate_blue_noise(32, 32, sigma, coverage, output_levels);
-
-    clock_t time_32x32 = clock();
-
-    generate_blue_noise(64, 64, sigma, coverage, output_levels);
-
-    clock_t time_64x64 = clock();
-
-    generate_blue_noise(128, 128, sigma, coverage, output_levels);
-
-    clock_t time_128x128 = clock();
-
-    generate_blue_noise(256, 256, sigma, coverage, output_levels);
-
-    clock_t time_end = clock();
-
-    std::cout << "Total time: " << 1000.0 * (time_end - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "8x8 time: " << 1000.0 * (time_8x8 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "16x16 time: " << 1000.0 * (time_16x16 - time_8x8) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "32x32 time: " << 1000.0 * (time_32x32 - time_16x16) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "64x64 time: " << 1000.0 * (time_64x64 - time_32x32) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "128x128 time: " << 1000.0 * (time_128x128 - time_64x64) / CLOCKS_PER_SEC << " ms" << std::endl;
-    std::cout << "256x256 time: " << 1000.0 * (time_end - time_128x128) / CLOCKS_PER_SEC << " ms" << std::endl;
+    
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -160,30 +137,44 @@ void error_diffusion_all(std::string file_name, Palette palette)
     return;
 }
 
-void generate_bayer_matrixes()
+void generate_bayer(int size, int output_levels)
 {
-    Image image = Image();
     Ordered ordered = Ordered();
+    Image image = Image();
+    std::string file_name = "output\\bayer_" + std::to_string(size) + "x" + std::to_string(size) + ".png";
 
-    ordered.bayer_matrix(2, Color::CHANNEL_MAX + 1);
-    image.create_from_threshold_matrix(ordered.threshold_matrix);
-    image.save("output\\bayer_2x2.png");
+    ordered.bayer_matrix(size, output_levels);
 
-    ordered.bayer_matrix(4, Color::CHANNEL_MAX + 1);
     image.create_from_threshold_matrix(ordered.threshold_matrix);
-    image.save("output\\bayer_4x4.png");
+    image.save(file_name.c_str());
 
-    ordered.bayer_matrix(8, Color::CHANNEL_MAX + 1);
-    image.create_from_threshold_matrix(ordered.threshold_matrix);
-    image.save("output\\bayer_8x8.png");
+    return;
+}
 
-    ordered.bayer_matrix(16, Color::CHANNEL_MAX + 1);
-    image.create_from_threshold_matrix(ordered.threshold_matrix);
-    image.save("output\\bayer_16x16.png");
+void generate_bayer_all(int output_levels)
+{
+    clock_t time_start = clock();
+    generate_bayer(2, output_levels);
+    clock_t time_2x2 = clock();
+    generate_bayer(4, output_levels);
+    clock_t time_4x4 = clock();
+    generate_bayer(8, output_levels);
+    clock_t time_8x8 = clock();
+    generate_bayer(16, output_levels);
+    clock_t time_16x16 = clock();
+    generate_bayer(32, output_levels);
+    clock_t time_32x32 = clock();
+    generate_bayer(64, output_levels);
+    clock_t time_end = clock();
 
-    ordered.bayer_matrix(32, Color::CHANNEL_MAX + 1);
-    image.create_from_threshold_matrix(ordered.threshold_matrix);
-    image.save("output\\bayer_32x32.png");
+    std::cout << "Bayer:" << std::endl;
+    std::cout << "2x2 time: " << 1000.0 * (time_2x2 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "4x4 time: " << 1000.0 * (time_4x4 - time_2x2) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "8x8 time: " << 1000.0 * (time_8x8 - time_4x4) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "16x16 time: " << 1000.0 * (time_16x16 - time_8x8) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "32x32 time: " << 1000.0 * (time_32x32 - time_16x16) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "64x64 time: " << 1000.0 * (time_end - time_32x32) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "Total time: " << 1000.0 * (time_end - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
 
     return;
 }
@@ -192,12 +183,42 @@ void generate_blue_noise(int width, int height, double sigma, double coverage, i
 {
     BlueNoise blue_noise = BlueNoise(width, height, sigma, coverage, output_levels);
     Image image = Image();
-    std::string file_name = "output\\blue_noise_" + std::to_string(width) + "x" + std::to_string(height) + "_s" + std::to_string(sigma) + ".png";
+    char file_name[1000];
+    sprintf(file_name, "output\\blue_noise_%ix%i_s%.1f.png", width, height, sigma);
+    // std::string file_name = "output\\blue_noise_" + std::to_string(width) + "x" + std::to_string(height) + "_s" + std::format("{:3}", sigma) + ".png";
 
     blue_noise.generate_dither_array();
 
     image.create_from_threshold_matrix(blue_noise.get_dither_array());
-    image.save(file_name.c_str());
+    image.save(file_name);
+
+    return;
+}
+
+void generate_blue_noise_all(double sigma, double coverage, int output_levels)
+{
+    clock_t time_start = clock();
+    generate_blue_noise(2, 2, sigma, std::max(coverage, 0.25), output_levels);
+    clock_t time_2x2 = clock();
+    generate_blue_noise(4, 4, sigma, std::max(coverage, 0.0625), output_levels);
+    clock_t time_4x4 = clock();
+    generate_blue_noise(8, 8, sigma, coverage, output_levels);
+    clock_t time_8x8 = clock();
+    generate_blue_noise(16, 16, sigma, coverage, output_levels);
+    clock_t time_16x16 = clock();
+    generate_blue_noise(32, 32, sigma, coverage, output_levels);
+    clock_t time_32x32 = clock();
+    generate_blue_noise(64, 64, sigma, coverage, output_levels);
+    clock_t time_end = clock();
+
+    std::cout << "Blue Noise:" << std::endl;
+    std::cout << "2x2 time: " << 1000.0 * (time_2x2 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "4x4 time: " << 1000.0 * (time_4x4 - time_2x2) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "8x8 time: " << 1000.0 * (time_8x8 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "16x16 time: " << 1000.0 * (time_16x16 - time_8x8) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "32x32 time: " << 1000.0 * (time_32x32 - time_16x16) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "64x64 time: " << 1000.0 * (time_end - time_32x32) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "Total time: " << 1000.0 * (time_end - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
 
     return;
 }

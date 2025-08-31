@@ -4,8 +4,10 @@ OBJS = blue_noise.cpp color.cpp dither.cpp error.cpp grayscale.cpp image.cpp lod
 
 OBJ_NAME = main
 
+COMPILER_FLAGS = -std=c++26
+
 all : $(OBJS)
-	$(CC) $(OBJS) -o $(OBJ_NAME)
+	$(CC) $(OBJS) $(COMPILER_FLAGS) -o $(OBJ_NAME)
 
 clean :
 	rm $(OBJ_NAME)
