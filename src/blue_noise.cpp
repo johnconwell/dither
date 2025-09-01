@@ -11,7 +11,7 @@ EnergyLUT::EnergyLUT()
     coordinate_highest_energy = std::pair<int, int>(-1, -1);
 }
 
-EnergyLUT::EnergyLUT(int width, int height)
+EnergyLUT::EnergyLUT(size_t width, size_t height)
 {
     this->height = height;
     this->width = width;
@@ -31,15 +31,15 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
     double half_height = static_cast<double>(height) / 2.0;
     double two_sigma_squared = 2 * sigma * sigma;
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             // reset LUT value before calculating energy
             LUT[y][x] = 0.0;
 
             // calculate the contribution of each pixel in the binary pattern
-            for(int j = 0; j < height; j++)
+            for(size_t j = 0; j < height; j++)
             {
                 double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
@@ -48,7 +48,7 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
                     dy = height - dy;
                 }
 
-                for(int i = 0; i < width; i++)
+                for(size_t i = 0; i < width; i++)
                 {
                     // only pixels of value 1 contribute to the energy
                     if(binary_pattern[j][i] == 1)
@@ -83,7 +83,7 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
 }
 
 // updates each element of the LUT to account for a change in the binary pattern
-void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int y, double sigma)
+void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, size_t x, size_t y, double sigma)
 {
     double half_width = static_cast<double>(width) / 2.0;
     double half_height = static_cast<double>(height) / 2.0;
@@ -93,7 +93,7 @@ void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int 
     value_highest_energy = 0.0;
 
     // calculate the contribution of each pixel in the binary pattern
-    for(int j = 0; j < height; j++)
+    for(size_t j = 0; j < height; j++)
     {
         double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
@@ -102,7 +102,7 @@ void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int 
             dy = height - dy;
         }
 
-        for(int i = 0; i < width; i++)
+        for(size_t i = 0; i < width; i++)
         {
             double dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
     
@@ -150,9 +150,9 @@ std::string EnergyLUT::to_string()
     output += "Coord Highest: (" + std::to_string(coordinate_highest_energy.first) + ", " + std::to_string(coordinate_highest_energy.second) + ")\tValue Highest: " + std::to_string(value_highest_energy) + "\n";
     output += "Coord Lowest:  (" + std::to_string(coordinate_lowest_energy.first) + ", " + std::to_string(coordinate_lowest_energy.second) + ")\tValue Lowest:  " + std::to_string(value_lowest_energy) + "\n";
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             output += std::to_string(LUT[y][x]) + "\t";
         }
@@ -179,7 +179,7 @@ BlueNoise::BlueNoise()
 }
 
 // resize all containers and initialize with zeros
-BlueNoise::BlueNoise(int width, int height, double sigma, double coverage, int output_levels)
+BlueNoise::BlueNoise(size_t width, size_t height, double sigma, double coverage, size_t output_levels)
 {
     this->dither_array = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
     this->binary_pattern_initial = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
@@ -218,19 +218,19 @@ void BlueNoise::generate_blue_noise()
 // generates the initial binary pattern by randomly placing (width * height * coverage) ones, then evenly spacing them using void and cluster algorithm
 void BlueNoise::generate_initial_binary_pattern()
 {
-    int num_pixels = height * width;
-    int num_minority_pixels = num_pixels * coverage;
+    size_t num_pixels = height * width;
+    size_t num_minority_pixels = num_pixels * coverage;
     std::vector<std::pair<int, int>> remaining_coordinates = std::vector<std::pair<int, int>>(num_pixels, {-1, -1});
     std::random_device rd;
     std::mt19937 mt(rd());
 
     // fill remaining_coordinates with all coordinates in the binary pattern matrix
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             // ((y * height) + x) maps 2d array coords to a 1d array
-            int index_remaining_coordinates = (y * height) + x;
+            size_t index_remaining_coordinates = (y * height) + x;
             remaining_coordinates[index_remaining_coordinates].first = x;
             remaining_coordinates[index_remaining_coordinates].second = y;
         }
@@ -247,7 +247,7 @@ void BlueNoise::generate_initial_binary_pattern()
     }
 
     // fill binary pattern with num_minority_pixels ones
-    for(int index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
+    for(size_t index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
     {
         std::pair<int, int> coordinate = remaining_coordinates[index_remaining_coordinates];
         if(index_remaining_coordinates < num_minority_pixels)
@@ -354,9 +354,9 @@ void BlueNoise::normalize_dither_array()
 {
     int num_pixels = height * width;
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             dither_array[y][x] *= static_cast<double>(output_levels) / static_cast<double>(num_pixels);
         }
@@ -368,12 +368,9 @@ void BlueNoise::normalize_dither_array()
 // copies binary_pattern_source into binary_pattern_destination
 void BlueNoise::binary_pattern_copy(std::vector<std::vector<int>> &binary_pattern_source, std::vector<std::vector<int>> &binary_pattern_destination)
 {
-    int height = binary_pattern_source.size();
-    int width = binary_pattern_source[0].size();
-    
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             binary_pattern_destination[y][x] = binary_pattern_source[y][x];
         }
@@ -385,12 +382,9 @@ void BlueNoise::binary_pattern_copy(std::vector<std::vector<int>> &binary_patter
 // inverts specified binary_pattern (switches all 0s to 1s and vice versa)
 void BlueNoise::binary_pattern_invert(std::vector<std::vector<int>> &binary_pattern)
 {
-    int height = binary_pattern.size();
-    int width = binary_pattern[0].size();
-
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             binary_pattern[y][x] = binary_pattern[y][x] ? 0 : 1;
         }
@@ -401,13 +395,11 @@ void BlueNoise::binary_pattern_invert(std::vector<std::vector<int>> &binary_patt
 
 std::string BlueNoise::to_string_dither_array()
 {
-    int height = dither_array.size();
-    int width = dither_array[0].size();
     std::string output = "";
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             output += std::to_string(dither_array[y][x]) + "\t";
         }
@@ -420,13 +412,11 @@ std::string BlueNoise::to_string_dither_array()
 
 std::string BlueNoise::to_string_binary_pattern_initial()
 {
-    int height = binary_pattern_initial.size();
-    int width = binary_pattern_initial[0].size();
     std::string output = "";
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             output += std::to_string(binary_pattern_initial[y][x]) + " ";
         }
@@ -439,13 +429,11 @@ std::string BlueNoise::to_string_binary_pattern_initial()
 
 std::string BlueNoise::to_string_binary_pattern_prototype()
 {
-    int height = binary_pattern_prototype.size();
-    int width = binary_pattern_prototype[0].size();
     std::string output = "";
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             output += std::to_string(binary_pattern_prototype[y][x]) + " ";
         }

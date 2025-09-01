@@ -11,7 +11,7 @@ class BrownNoise
 {
 public:
     BrownNoise();
-    BrownNoise(int width, int height, double leaky_integrator, int output_levels);
+    BrownNoise(size_t width, size_t height, double leaky_integrator, size_t output_levels);
     std::vector<std::vector<int>> get_threshold_matrix();
     void generate_brown_noise();
 
@@ -19,10 +19,10 @@ public:
 
 private:
     std::vector<std::vector<int>> threshold_matrix;
-    int width;
-    int height;
+    size_t width;
+    size_t height;
     double leaky_integrator;
-    int output_levels;
+    size_t output_levels;
     double value_min;
     double value_max;
 };

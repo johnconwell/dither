@@ -14,15 +14,15 @@
 struct EnergyLUT
 {
     EnergyLUT();
-    EnergyLUT(int width, int height);
+    EnergyLUT(size_t width, size_t height);
     void create(std::vector<std::vector<int>> binary_pattern, double sigma);
-    void update(std::vector<std::vector<int>> binary_pattern, int x, int y, double sigma);
+    void update(std::vector<std::vector<int>> binary_pattern, size_t x, size_t y, double sigma);
 
     std::string to_string();
 
     std::vector<std::vector<double>> LUT;
-    int height;
-    int width;
+    size_t height;
+    size_t width;
     double value_lowest_energy;
     double value_highest_energy;
     std::pair<int, int> coordinate_lowest_energy;
@@ -33,7 +33,7 @@ class BlueNoise
 {
 public:
     BlueNoise();
-    BlueNoise(int width, int height, double sigma, double coverage, int output_levels);
+    BlueNoise(size_t width, size_t height, double sigma, double coverage, size_t output_levels);
 
     std::vector<std::vector<int>> get_threshold_matrix();
     void generate_blue_noise();
@@ -47,11 +47,11 @@ private:
     std::vector<std::vector<int>> binary_pattern_initial;
     std::vector<std::vector<int>> binary_pattern_prototype;
     EnergyLUT energy_lut;
-    int height;
-    int width;
+    size_t height;
+    size_t width;
     double sigma;
     double coverage;
-    int output_levels;
+    size_t output_levels;
 
     void generate_initial_binary_pattern();
     void generate_dither_array_phase_1();

@@ -3,6 +3,7 @@
 #include "brown_noise.h"
 #include "dither.h"
 #include "error.h"
+#include "fourier.h"
 #include "grayscale.h"
 #include "ordered.h"
 #include "palette.h"
@@ -40,7 +41,7 @@ int main()
     generate_brown_noise_all(leaky_integrator, output_levels);
     generate_white_noise_all(output_levels);
 
-    
+    fourier();
 
 
     

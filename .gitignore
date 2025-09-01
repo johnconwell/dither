@@ -1,9 +1,7 @@
-.gitignore
 .vscode/
+bin/
 examples/
 input/
+obj/
 output/
 *.exe
-build/
-obj/
-bin/

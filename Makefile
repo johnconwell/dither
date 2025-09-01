@@ -5,9 +5,9 @@ ODIR = ./obj
 SDIR = ./src
 
 CC = g++
-CFLAGS = -I$(IDIR) -Wall -std=c++26
+CFLAGS = -I$(IDIR) -L$(LDIR) -Wall -std=c++26
 
-LIBS = -lm
+LIBS = -llibfftw3-3 -llibfftw3f-3 -llibfftw3l-3 -lm
 
 _DEPS = bayer.h blue_noise.h brown_noise.h color.h dither.h error.h fftw3.h fourier.h grayscale.h image.h lodepng.h ordered.h palette.h white_noise.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
@@ -24,4 +24,4 @@ main : $(OBJ)
 .PHONY : clean
 
 clean:
-	rm -f $(ODIR)/*.o *~ core $(INCDIR)/*~
+	rm -f $(ODIR)/*.o

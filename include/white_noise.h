@@ -10,7 +10,7 @@ class WhiteNoise
 {
 public:
     WhiteNoise();
-    WhiteNoise(int width, int height, int output_levels);
+    WhiteNoise(size_t width, size_t height, size_t output_levels);
     std::vector<std::vector<int>> get_threshold_matrix();
     void generate_white_noise();
 
@@ -18,9 +18,9 @@ public:
 
 private:
     std::vector<std::vector<int>> threshold_matrix;
-    int width;
-    int height;
-    int output_levels;
+    size_t width;
+    size_t height;
+    size_t output_levels;
 };
 
 

@@ -9,7 +9,7 @@ WhiteNoise::WhiteNoise()
     return;
 }
 
-WhiteNoise::WhiteNoise(int width, int height, int output_levels)
+WhiteNoise::WhiteNoise(size_t width, size_t height, size_t output_levels)
 {
     this->threshold_matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
     this->width = width;
@@ -29,9 +29,9 @@ void WhiteNoise::generate_white_noise()
     std::mt19937 mt(rd());
     std::uniform_int_distribution<> dis(0, output_levels - 1);
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             threshold_matrix[y][x] = dis(mt);
         }
@@ -44,9 +44,9 @@ std::string WhiteNoise::to_string()
 {
     std::string output = "";
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             output += std::to_string(threshold_matrix[y][x]) + " ";
         }

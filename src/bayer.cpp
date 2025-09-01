@@ -29,9 +29,9 @@ void Bayer::generate_bayer_matrix()
     // normalize threshold matrix once recursion has completed
     int num_pixels = size * size;
 
-    for(int y = 0; y < size; y++)
+    for(size_t y = 0; y < size; y++)
     {
-        for(int x = 0; x < size; x++)
+        for(size_t x = 0; x < size; x++)
         {
             threshold_matrix[y][x] *= double(output_levels) / double(num_pixels);
         }
@@ -41,7 +41,7 @@ void Bayer::generate_bayer_matrix()
 }
 
 // recursively populate a bayer matrix
-std::vector<std::vector<int>> Bayer::_bayer_matrix(int x, int y, int size, int value, int step, std::vector<std::vector<int>> &matrix)
+std::vector<std::vector<int>> Bayer::_bayer_matrix(size_t x, size_t y, size_t size, int value, int step, std::vector<std::vector<int>> &matrix)
 {
     if(size == 1)
     {
@@ -49,7 +49,7 @@ std::vector<std::vector<int>> Bayer::_bayer_matrix(int x, int y, int size, int v
         return matrix;
     }
 
-    int half = size / 2;
+    size_t half = size / 2;
 
     _bayer_matrix(x,        y       , half, value + (step * 0), step * 4, matrix);
     _bayer_matrix(x + half, y + half, half, value + (step * 1), step * 4, matrix);
@@ -63,9 +63,9 @@ std::string Bayer::to_string()
 {
     std::string output = "";
 
-    for(int y = 0; y < size; y++)
+    for(size_t y = 0; y < size; y++)
     {
-        for(int x = 0; x < size; x++)
+        for(size_t x = 0; x < size; x++)
         {
             output += std::to_string(threshold_matrix[y][x]) + " ";
         }

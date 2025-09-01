@@ -16,10 +16,10 @@ public:
 
 private:
     std::vector<std::vector<int>> threshold_matrix;
-    int size;
-    int output_levels;
+    size_t size;
+    size_t output_levels;
 
-    std::vector<std::vector<int>> _bayer_matrix(int x, int y, int size, int value, int step, std::vector<std::vector<int>> &matrix);
+    std::vector<std::vector<int>> _bayer_matrix(size_t x, size_t y, size_t size, int value, int step, std::vector<std::vector<int>> &matrix);
 };
 
 #endif
