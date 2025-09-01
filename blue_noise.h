@@ -2,10 +2,11 @@
 #define __BLUE_NOISE_H
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
-#include <float.h>
 #include <iostream>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,8 +35,8 @@ public:
     BlueNoise();
     BlueNoise(int width, int height, double sigma, double coverage, int output_levels);
 
-    std::vector<std::vector<int>> get_dither_array();
-    void generate_dither_array();
+    std::vector<std::vector<int>> get_threshold_matrix();
+    void generate_blue_noise();
 
     std::string to_string_dither_array();
     std::string to_string_binary_pattern_initial();
@@ -61,7 +62,5 @@ private:
     void binary_pattern_copy(std::vector<std::vector<int>> &binary_pattern_source, std::vector<std::vector<int>> &binary_pattern_destination);
     void binary_pattern_invert(std::vector<std::vector<int>> &binary_pattern);
 };
-
-
 
 #endif

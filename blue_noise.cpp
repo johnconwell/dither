@@ -194,13 +194,13 @@ BlueNoise::BlueNoise(int width, int height, double sigma, double coverage, int o
 }
 
 // returns the dither array
-std::vector<std::vector<int>> BlueNoise::get_dither_array()
+std::vector<std::vector<int>> BlueNoise::get_threshold_matrix()
 {
     return dither_array;
 }
 
 // performs the full blue noise algorithm
-void BlueNoise::generate_dither_array()
+void BlueNoise::generate_blue_noise()
 {
     generate_initial_binary_pattern();
     generate_dither_array_phase_1();
@@ -215,6 +215,8 @@ void BlueNoise::generate_initial_binary_pattern()
     int num_pixels = height * width;
     int num_minority_pixels = num_pixels * coverage;
     std::vector<std::pair<int, int>> remaining_coordinates = std::vector<std::pair<int, int>>(num_pixels, {-1, -1});
+    std::random_device rd;
+    std::mt19937 mt(rd());
 
     // fill remaining_coordinates with all coordinates in the binary pattern matrix
     for(int y = 0; y < height; y++)
@@ -231,7 +233,8 @@ void BlueNoise::generate_initial_binary_pattern()
     // shuffle remaining coordinates array
     for(int index_remaining_coordinates = num_pixels - 1; index_remaining_coordinates >= 0; index_remaining_coordinates--)
     {
-        int index_random = rand() % (index_remaining_coordinates + 1);
+        std::uniform_int_distribution<> dis(0, index_remaining_coordinates + 1);
+        int index_random = dis(mt);
         std::pair<int, int> temp = remaining_coordinates[index_remaining_coordinates];
         remaining_coordinates[index_remaining_coordinates] = remaining_coordinates[index_random];
         remaining_coordinates[index_random] = temp;

@@ -88,13 +88,9 @@ public:
     std::vector<std::vector<int>> threshold_matrix;
 
     Ordered();
-    void bayer_matrix(int size, int output_levels);
-    void white_noise(int size, int output_levels);
-    void blue_noise(int size);
     std::string to_string();
 
 private:
-    std::vector<std::vector<int>> _bayer_matrix(int x, int y, int size, int value, int step, std::vector<std::vector<int>> &matrix);
     int _distance_toriodal_squared(int x1, int y1, int x2, int y2, int size);
 };
 
