@@ -4,3 +4,6 @@ examples/
 input/
 output/
 *.exe
+build/
+obj/
+bin/

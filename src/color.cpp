@@ -59,7 +59,7 @@ Color Color::operator+(const Color& other) const
 // returns this * scalar
 Color Color::operator*(const double scalar) const
 {
-    return Color(int16_t(this->r * scalar), int16_t(this->g * scalar), int16_t(this->b * scalar), Color::CHANNEL_MAX);
+    return Color(static_cast<int16_t>(this->r * scalar), static_cast<int16_t>(this->g * scalar), static_cast<int16_t>(this->b * scalar), Color::CHANNEL_MAX);
 }
 
 // returns the hex value of the color
@@ -77,7 +77,7 @@ int Color::distance_squared(Color other)
 // returns the euclidean distance to the specified color
 double Color::distance(Color other)
 {
-    return sqrt(double(distance_squared(other)));
+    return sqrt(static_cast<double>(distance_squared(other)));
 }
 
 // returns the redmean distance squared to the specified color
@@ -86,14 +86,14 @@ int Color::distance_redmean_squared(Color other)
     int delta_r = other.r - this->r;
     int delta_g = other.g - this->g;
     int delta_b = other.b - this->b;
-    int r_bar = 0.5 * double(other.r + this->r);
+    int r_bar = 0.5 * static_cast<double>(other.r + this->r);
     return (((512 + r_bar) * delta_r * delta_r) >> 8) + 4 * delta_g * delta_g + (((767 - r_bar) * delta_b + delta_b) >> 8);
 }
 
 // returns the redmean distance to the specified color
 double Color::distance_redmean(Color other)
 {
-    return sqrt(double(distance_redmean_squared(other)));
+    return sqrt(static_cast<double>(distance_redmean_squared(other)));
 }
 
 // returns the distance to the specified color, assuming both colors are grayscale

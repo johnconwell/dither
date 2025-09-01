@@ -20,23 +20,23 @@ void Image::clear()
 }
 
 // returns image's width
-unsigned int Image::get_width()
+size_t Image::get_width()
 {
     return width;
 }
 
 // returns image's height
-unsigned int Image::get_height()
+size_t Image::get_height()
 {
     return height;
 }
 
 // loads a png from the specified path
-unsigned int Image::load(const char* file_name)
+size_t Image::load(const char* file_name)
 {
     clear();
     
-    unsigned error = lodepng::decode(pixels, width, height, file_name);
+    size_t error = lodepng::decode(pixels, width, height, file_name);
 
     if(error)
     {
@@ -47,9 +47,9 @@ unsigned int Image::load(const char* file_name)
 }
 
 // saves a png to the specified path
-unsigned int Image::save(const char* file_name)
+size_t Image::save(const char* file_name)
 {
-    unsigned error = lodepng::encode(file_name, pixels, width, height);
+    size_t error = lodepng::encode(file_name, pixels, width, height);
 
     if(error)
     {
@@ -60,7 +60,7 @@ unsigned int Image::save(const char* file_name)
 }
 
 // gets the pixel color at (x, y)
-Color Image::get_pixel(int x, int y)
+Color Image::get_pixel(unsigned int x, unsigned int y)
 {
     Color color = Color();
     int index_start = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
@@ -72,7 +72,7 @@ Color Image::get_pixel(int x, int y)
 }
 
 // sets the pixel color at (x, y)
-void Image::set_pixel(Color color, int x, int y)
+void Image::set_pixel(Color color, unsigned int x, unsigned int y)
 {
     int index_start = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
     pixels[index_start + Color::INDEX_R] = color.r;
@@ -88,9 +88,9 @@ std::vector<std::vector<int>> Image::gradient_map()
 {
     std::vector<std::vector<int>> gm(width, std::vector<int>(height, 0));
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             
         }
@@ -106,9 +106,9 @@ void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold
     width = threshold_matrix[0].size();
     pixels.resize(width * height * 4);
 
-    for(int y = 0; y < height; y++)
+    for(size_t y = 0; y < height; y++)
     {
-        for(int x = 0; x < width; x++)
+        for(size_t x = 0; x < width; x++)
         {
             int index_pixels = 4 * width * y + 4 * x;
             pixels[index_pixels + 0] = threshold_matrix[y][x];

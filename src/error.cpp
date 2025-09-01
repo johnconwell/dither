@@ -104,8 +104,9 @@ Error::Error(ErrorDiffusionAlgorithm algorithm)
 std::string Error::to_string()
 {
     std::string output = "";
+    size_t coordinates_size = coordinates.size();
 
-    for(int index_coordinates = 0; index_coordinates < coordinates.size(); index_coordinates++){
+    for(size_t index_coordinates = 0; index_coordinates < coordinates_size; index_coordinates++){
         output += "(" + std::to_string(coordinates[index_coordinates].first) + ", " + std::to_string(coordinates[index_coordinates].second) + "): " + std::to_string(scalars[coordinates[index_coordinates]]) + "\n";
     }
 

@@ -17,7 +17,7 @@ EnergyLUT::EnergyLUT(int width, int height)
     this->width = width;
     LUT = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
     value_lowest_energy = DBL_MAX;
-    value_highest_energy = 0.0;
+    value_highest_energy = DBL_MIN;
     coordinate_lowest_energy = std::pair<int, int>(-1, -1);
     coordinate_highest_energy = std::pair<int, int>(-1, -1);
 }
@@ -26,9 +26,9 @@ EnergyLUT::EnergyLUT(int width, int height)
 void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigma)
 {
     value_lowest_energy = DBL_MAX;
-    value_highest_energy = 0.0;
-    double half_width = double(width) / 2.0;
-    double half_height = double(height) / 2.0;
+    value_highest_energy = DBL_MIN;
+    double half_width = static_cast<double>(width) / 2.0;
+    double half_height = static_cast<double>(height) / 2.0;
     double two_sigma_squared = 2 * sigma * sigma;
 
     for(int y = 0; y < height; y++)
@@ -41,7 +41,7 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
             // calculate the contribution of each pixel in the binary pattern
             for(int j = 0; j < height; j++)
             {
-                double dy = std::abs(double(y) - double(j));
+                double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
                 if(dy > half_height)
                 {
@@ -53,7 +53,7 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
                     // only pixels of value 1 contribute to the energy
                     if(binary_pattern[j][i] == 1)
                     {
-                        double dx = std::abs(double(x) - double(i));
+                        double dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
                 
                         if(dx > half_width)
                         {
@@ -85,8 +85,8 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
 // updates each element of the LUT to account for a change in the binary pattern
 void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int y, double sigma)
 {
-    double half_width = double(width) / 2.0;
-    double half_height = double(height) / 2.0;
+    double half_width = static_cast<double>(width) / 2.0;
+    double half_height = static_cast<double>(height) / 2.0;
     double two_sigma_squared = 2 * sigma * sigma;
 
     value_lowest_energy = DBL_MAX;
@@ -95,7 +95,7 @@ void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int 
     // calculate the contribution of each pixel in the binary pattern
     for(int j = 0; j < height; j++)
     {
-        double dy = std::abs(double(y) - double(j));
+        double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
         if(dy > half_height)
         {
@@ -104,7 +104,7 @@ void EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, int x, int 
 
         for(int i = 0; i < width; i++)
         {
-            double dx = std::abs(double(x) - double(i));
+            double dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
     
             if(dx > half_width)
             {
@@ -190,6 +190,12 @@ BlueNoise::BlueNoise(int width, int height, double sigma, double coverage, int o
     this->sigma = sigma;
     this->coverage = coverage;
     this->output_levels = output_levels;
+
+    // must have at least one pixel set high
+    if(static_cast<double>(this->width) * static_cast<double>(this->height) * this->coverage < 1.0)
+    {
+        this->coverage = 1.0 / (static_cast<double>(this->width) * static_cast<double>(this->height));
+    }
     return;
 }
 
@@ -225,15 +231,15 @@ void BlueNoise::generate_initial_binary_pattern()
         {
             // ((y * height) + x) maps 2d array coords to a 1d array
             int index_remaining_coordinates = (y * height) + x;
-            remaining_coordinates[(y * height) + x].first = x;
-            remaining_coordinates[(y * height) + x].second = y;
+            remaining_coordinates[index_remaining_coordinates].first = x;
+            remaining_coordinates[index_remaining_coordinates].second = y;
         }
     }
 
     // shuffle remaining coordinates array
     for(int index_remaining_coordinates = num_pixels - 1; index_remaining_coordinates >= 0; index_remaining_coordinates--)
     {
-        std::uniform_int_distribution<> dis(0, index_remaining_coordinates + 1);
+        std::uniform_int_distribution<> dis(0, index_remaining_coordinates);
         int index_random = dis(mt);
         std::pair<int, int> temp = remaining_coordinates[index_remaining_coordinates];
         remaining_coordinates[index_remaining_coordinates] = remaining_coordinates[index_random];
@@ -251,7 +257,7 @@ void BlueNoise::generate_initial_binary_pattern()
     }
 
     energy_lut.create(binary_pattern_initial, sigma);
-    
+
     // limiting iterations ensures that this will not get stuck forever if there is a bug
     int count = 0;
     while(count < 100)
@@ -352,7 +358,7 @@ void BlueNoise::normalize_dither_array()
     {
         for(int x = 0; x < width; x++)
         {
-            dither_array[y][x] *= double(output_levels) / double(num_pixels);
+            dither_array[y][x] *= static_cast<double>(output_levels) / static_cast<double>(num_pixels);
         }
     }
 

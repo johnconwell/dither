@@ -24,7 +24,7 @@ Palette::Palette(std::string name, std::vector<Color> colors)
 }
 
 // returns the size of the palette
-int Palette::size()
+size_t Palette::size()
 {
     return colors.size();
 }
@@ -45,7 +45,9 @@ void Palette::add_color(Color color)
 // removes a color from the palette
 void Palette::remove_color(Color color)
 {
-    for(int index = 0; index < colors.size(); index++)
+    size_t colors_size = colors.size();
+
+    for(size_t index = 0; index < colors_size; index++)
     {
         if(colors[index] == color)
         {
@@ -60,9 +62,11 @@ void Palette::remove_color(Color color)
 // sorts the palette from darkest colors (closest to black) to lightest colors (closest to white)
 void Palette::sort()
 {
-    for(int index_primary = 0; index_primary < colors.size() - 1; index_primary++)
+    size_t colors_size = colors.size();
+
+    for(size_t index_primary = 0; index_primary < colors_size - 1; index_primary++)
     {
-        for(int index_secondary = index_primary + 1; index_secondary < colors.size(); index_secondary++)
+        for(size_t index_secondary = index_primary + 1; index_secondary < colors_size; index_secondary++)
         {
             if(colors[index_secondary] < colors[index_primary])
             {
@@ -81,8 +85,9 @@ Color Palette::nearest(Color color)
 {
     int index_nearest = -1;
     int distance_squared_nearest = INT_MAX;
+    size_t colors_size = colors.size();
 
-    for(int index_palette = 0; index_palette < colors.size(); index_palette++)
+    for(size_t index_palette = 0; index_palette < colors_size; index_palette++)
     {
         int distance_squared = color.distance_squared(colors[index_palette]);
         if(distance_squared < distance_squared_nearest)
@@ -100,8 +105,9 @@ Color Palette::nearest_grayscale(Color color)
 {
     int index_nearest = -1;
     int distance_nearest = INT_MAX;
+    size_t colors_size = colors.size();
 
-    for(int index_palette = 0; index_palette < colors.size(); index_palette++)
+    for(size_t index_palette = 0; index_palette < colors_size; index_palette++)
     {
         int distance = color.distance_grayscale(colors[index_palette]);
         if(distance < distance_nearest)
@@ -118,8 +124,9 @@ Color Palette::nearest_grayscale(Color color)
 std::string Palette::to_string()
 {
     std::string output = "";
+    size_t colors_size = colors.size();
 
-    for(int index_palette = 0; index_palette < colors.size(); index_palette++)
+    for(size_t index_palette = 0; index_palette < colors_size; index_palette++)
     {
         output += colors[index_palette].to_string() + "\n";
     }

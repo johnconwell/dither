@@ -1,13 +1,27 @@
+BDIR = ./bin
+IDIR = ./include
+LDIR = ./lib
+ODIR = ./obj
+SDIR = ./src
+
 CC = g++
+CFLAGS = -I$(IDIR) -Wall -std=c++26
 
-OBJS = bayer.cpp blue_noise.cpp brown_noise.cpp color.cpp dither.cpp error.cpp grayscale.cpp image.cpp lodepng.cpp main.cpp ordered.cpp palette.cpp white_noise.cpp
+LIBS = -lm
 
-OBJ_NAME = main
+_DEPS = bayer.h blue_noise.h brown_noise.h color.h dither.h error.h fftw3.h fourier.h grayscale.h image.h lodepng.h ordered.h palette.h white_noise.h
+DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
-COMPILER_FLAGS = -std=c++26
+_OBJ = bayer.o blue_noise.o brown_noise.o color.o dither.o error.o fourier.o grayscale.o image.o lodepng.o main.o ordered.o palette.o white_noise.o
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
-all : $(OBJS)
-	$(CC) $(OBJS) $(COMPILER_FLAGS) -o $(OBJ_NAME)
+$(ODIR)/%.o : $(SDIR)/%.cpp $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-clean :
-	rm $(OBJ_NAME)
+main : $(OBJ)
+	$(CC) -o $(BDIR)/$@ $^ $(CFLAGS) $(LIBS)
+
+.PHONY : clean
+
+clean:
+	rm -f $(ODIR)/*.o *~ core $(INCDIR)/*~

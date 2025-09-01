@@ -1,5 +1,6 @@
 #include "bayer.h"
 #include "blue_noise.h"
+#include "brown_noise.h"
 #include "dither.h"
 #include "error.h"
 #include "grayscale.h"
@@ -30,12 +31,13 @@ int main()
 
     int output_levels = Color::CHANNEL_MAX + 1;
     double sigma = 1.9;
-    double coverage = 0.05;
+    double coverage = 0.1;
+    double leaky_integrator = 0.999;
     
     // error_diffusion_all("statue", palette_black_white);
-
     generate_bayer_all(output_levels);
     generate_blue_noise_all(sigma, coverage, output_levels);
+    generate_brown_noise_all(leaky_integrator, output_levels);
     generate_white_noise_all(output_levels);
 
     
@@ -142,7 +144,7 @@ void generate_bayer(int size, int output_levels)
     Bayer bayer = Bayer(size, output_levels);
     Image image = Image();
     char file_name[1000];
-    sprintf(file_name, "output\\blue_noise_%ix%i.png", size, size);
+    sprintf(file_name, "output\\bayer_%ix%i.png", size, size);
 
     bayer.generate_bayer_matrix();
 
@@ -225,12 +227,45 @@ void generate_blue_noise_all(double sigma, double coverage, int output_levels)
 
 void generate_brown_noise(int width, int height, double leaky_integrator, int output_levels)
 {
+    BrownNoise brown_noise = BrownNoise(width, height, leaky_integrator, output_levels);
+    Image image = Image();
+    char file_name[1000];
+    sprintf(file_name, "output\\brown_noise_%ix%i.png", width, height);
 
+    brown_noise.generate_brown_noise();
+
+    image.create_from_threshold_matrix(brown_noise.get_threshold_matrix());
+    image.save(file_name);
+
+    return;
 }
 
 void generate_brown_noise_all(double leaky_integrator, int output_levels)
 {
+    clock_t time_start = clock();
+    generate_brown_noise(2, 2, leaky_integrator, output_levels);
+    clock_t time_2x2 = clock();
+    generate_brown_noise(4, 4, leaky_integrator, output_levels);
+    clock_t time_4x4 = clock();
+    generate_brown_noise(8, 8, leaky_integrator, output_levels);
+    clock_t time_8x8 = clock();
+    generate_brown_noise(16, 16, leaky_integrator, output_levels);
+    clock_t time_16x16 = clock();
+    generate_brown_noise(32, 32, leaky_integrator, output_levels);
+    clock_t time_32x32 = clock();
+    generate_brown_noise(64, 64, leaky_integrator, output_levels);
+    clock_t time_end = clock();
 
+    std::cout << "Brown Noise:" << std::endl;
+    std::cout << "2x2 time: " << 1000.0 * (time_2x2 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "4x4 time: " << 1000.0 * (time_4x4 - time_2x2) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "8x8 time: " << 1000.0 * (time_8x8 - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "16x16 time: " << 1000.0 * (time_16x16 - time_8x8) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "32x32 time: " << 1000.0 * (time_32x32 - time_16x16) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "64x64 time: " << 1000.0 * (time_end - time_32x32) / CLOCKS_PER_SEC << " ms" << std::endl;
+    std::cout << "Total time: " << 1000.0 * (time_end - time_start) / CLOCKS_PER_SEC << " ms" << std::endl;
+
+    return;
 }
 
 void generate_white_noise(int width, int height, int output_levels)

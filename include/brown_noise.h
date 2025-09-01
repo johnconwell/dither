@@ -1,6 +1,8 @@
 #ifndef __BROWN_NOISE_H
 #define __BROWN_NOISE_H
 
+#include "white_noise.h"
+#include <cfloat>
 #include <random>
 #include <string>
 #include <vector>
@@ -21,6 +23,8 @@ private:
     int height;
     double leaky_integrator;
     int output_levels;
+    double value_min;
+    double value_max;
 };
 
 

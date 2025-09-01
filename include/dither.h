@@ -7,6 +7,7 @@
 #include "lodepng.h"
 #include "ordered.h"
 #include "palette.h"
+#include <cstddef>
 #include <iostream>
 #include <vector>
 
@@ -25,8 +26,8 @@ private:
 public:
     Dither();
     void set_palette(Palette palette);
-    unsigned int load(const char* file_name);
-    unsigned int save(const char* file_name);
+    size_t load(const char* file_name);
+    size_t save(const char* file_name);
     void grayscale(GrayscaleMethod method);
     void reduce();
     void error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate);

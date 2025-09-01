@@ -29,7 +29,7 @@ public:
 
     Palette();
     Palette(std::string name, std::vector<Color> colors);
-    int size();
+    size_t size();
     Color get_color_at(int index);
     void add_color(Color color);
     void remove_color(Color color);
