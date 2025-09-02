@@ -1,7 +1,6 @@
 .vscode/
-bin/
 examples/
 input/
-obj/
 output/
 *.exe
+*.o

@@ -41,7 +41,7 @@ int main()
     generate_brown_noise_all(leaky_integrator, output_levels);
     generate_white_noise_all(output_levels);
 
-    fourier();
+    // fourier();
 
 
     
