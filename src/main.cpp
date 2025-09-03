@@ -9,8 +9,10 @@
 #include "palette.h"
 #include "white_noise.h"
 #include <chrono>
+#include <cmath>
 #include <format>
 #include <iostream>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -36,13 +38,29 @@ int main()
     double leaky_integrator = 0.999;
     
     // error_diffusion_all("statue", palette_black_white);
-    generate_bayer_all(output_levels);
-    generate_blue_noise_all(sigma, coverage, output_levels);
-    generate_brown_noise_all(leaky_integrator, output_levels);
-    generate_white_noise_all(output_levels);
+    // generate_bayer_all(output_levels);
+    // generate_blue_noise_all(sigma, coverage, output_levels);
+    // generate_brown_noise_all(leaky_integrator, output_levels);
+    // generate_white_noise_all(output_levels);
 
     // fourier();
+    int size = 64;
+    int scalar = 100;
+    std::vector<int> sin_wave = std::vector<int>(size, 0);
+    std::cout << "sin" << std::endl;
+    for(int index = 0; index < size; index++)
+    {
+        sin_wave[index] = static_cast<int>(scalar * sin(index) + 0.5 * scalar * sin(index * 2) + 2 * scalar * sin(index * 3));
+        std::cout << index << " " << sin_wave[index] << std::endl;
+    }
 
+    std::vector<int> transform = fourier_1d(sin_wave);
+
+    std::cout << "transform" << std::endl;
+    for(int index = 0; index < size; index++)
+    {
+        std::cout << index << " " << transform[index] << std::endl;
+    }
 
     
 

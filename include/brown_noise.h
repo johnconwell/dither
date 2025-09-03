@@ -23,8 +23,12 @@ private:
     size_t height;
     double leaky_integrator;
     size_t output_levels;
-    double value_min;
-    double value_max;
+    int input_min;
+    int input_max;
+    double integrated_min;
+    double integrated_max;
+    int normalized_min;
+    int normalized_max;
 };
 
 

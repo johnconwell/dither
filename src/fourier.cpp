@@ -60,3 +60,35 @@ void fourier()
     fftw_free(in);
     fftw_free(out);
 }
+
+// returns the fourier transform of the specified 1d dataset
+std::vector<int> fourier_1d(std::vector<int> dataset)
+{
+    size_t size = dataset.size();
+
+    double *in = fftw_alloc_real(size);
+    fftw_complex *out = fftw_alloc_complex(size / 2 + 1);
+    fftw_plan plan = fftw_plan_dft_r2c_1d(size, in, out, FFTW_ESTIMATE);
+
+    // fill the in array with data from dataset
+    for(size_t index_dataset = 0; index_dataset < size; index_dataset++)
+    {
+        in[index_dataset] = static_cast<double>(dataset[index_dataset]);
+    }
+
+    fftw_execute(plan);
+
+    std::vector<int> transform = std::vector<int>(size, 0);
+
+    // fill output vector with the results of the transform
+    for(size_t index_transform = 0; index_transform < size / 2 + 1; index_transform++)
+    {
+        transform[index_transform] = static_cast<int>(sqrt(out[index_transform][0] * out[index_transform][0] + out[index_transform][1] * out[index_transform][1]));
+    }
+
+    fftw_destroy_plan(plan);
+    fftw_free(in);
+    fftw_free(out);
+
+    return transform;
+}
