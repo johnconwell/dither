@@ -17,14 +17,14 @@
 #include <vector>
 
 void error_diffusion_all(std::string file_name, Palette palette);
-void generate_bayer(int size, int output_levels);
-void generate_bayer_all(int output_levels);
-void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels);
-void generate_blue_noise_all(double sigma, double coverage, int output_levels);
-void generate_brown_noise(int width, int height, double leaky_integrator, int output_levels);
-void generate_brown_noise_all(double leaky_integrator, int output_levels);
-void generate_white_noise(int width, int height, int output_levels);
-void generate_white_noise_all(int output_levels);
+void generate_bayer(int size, int output_levels, bool fourier);
+void generate_bayer_all(int output_levels, bool fourier);
+void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels, bool fourier);
+void generate_blue_noise_all(double sigma, double coverage, int output_levels, bool fourier);
+void generate_brown_noise(int width, int height, double leaky_integrator, int output_levels, bool fourier);
+void generate_brown_noise_all(double leaky_integrator, int output_levels, bool fourier);
+void generate_white_noise(int width, int height, int output_levels, bool fourier);
+void generate_white_noise_all(int output_levels, bool fourier);
 
 int main()
 {
@@ -38,106 +38,10 @@ int main()
     double leaky_integrator = 0.999;
     
     // error_diffusion_all("statue", palette_black_white);
-    // generate_bayer_all(output_levels);
-    // generate_blue_noise_all(sigma, coverage, output_levels);
-    // generate_brown_noise_all(leaky_integrator, output_levels);
-    // generate_white_noise_all(output_levels);
-
-    // fourier();
-    // int size = 64;
-    // int scalar = 100;
-    // std::vector<int> sin_wave = std::vector<int>(size, 0);
-    // std::cout << "sin" << std::endl;
-    // for(int index = 0; index < size; index++)
-    // {
-    //     sin_wave[index] = static_cast<int>(scalar * sin(index) + 0.5 * scalar * sin(index * 2) + 2 * scalar * sin(index * 3));
-    //     std::cout << index << " " << sin_wave[index] << std::endl;
-    // }
-
-    // std::vector<int> transform = fourier_1d(sin_wave, true);
-
-    // std::cout << "transform" << std::endl;
-    // for(int index = 0; index < size; index++)
-    // {
-    //     std::cout << index << " " << transform[index] << std::endl;
-    // }
-
-    size_t height = 32;
-    size_t width = 32;
-    int num_pixels = height * width;
-    size_t scalar = 100;
-    std::vector<std::vector<int>> array = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
-    int array_min = INT_MAX;
-    int array_max = INT_MIN;
-    WhiteNoise wn = WhiteNoise(width, height, output_levels);
-    wn.generate_white_noise();
-    BlueNoise bn = BlueNoise(width, height, sigma, coverage, output_levels);
-    bn.generate_blue_noise();
-    array = bn.get_threshold_matrix();
-
-    std::cout << "array" << std::endl;
-
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            // array[y][x] = static_cast<int>(scalar * sin(3 * y * 2 * std::numbers::pi / height)) + 0.5 * scalar * cos(5 * x * 2 * std::numbers::pi / width);
-            array_min = std::min(array_min, array[y][x]);
-            array_max = std::max(array_max, array[y][x]);
-            std::cout << array[y][x] << " ";
-        }
-
-        std::cout << std::endl;
-    }
-
-    
-
-    std::vector<std::vector<int>> transform = fourier_transform_2d(array, true, false);
-
-    // transform[0][0] = 0.0;
-    // transform[0][0] = 0.0;
-    
-    int transform_min = INT_MAX;
-    int transform_max = INT_MIN;
-
-    std::cout << "transform" << std::endl;
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            transform_min = std::min(transform_min, transform[y][x]);
-            transform_max = std::max(transform_max, transform[y][x]);
-            std::cout << transform[y][x] << " ";
-        }
-
-        std::cout << std::endl;
-    }
-
-    int array_range = array_max - array_min;
-    int transform_range = transform_max - transform_min;
-
-    // normalize to output levels
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            array[y][x] = (array[y][x] - array_min) * (output_levels - 1) / array_range;
-            transform[y][x] = (transform[y][x] - transform_min) * (output_levels - 1) / transform_range;
-        }
-    }
-
-    Image image_array = Image();
-    char file_name_array[1000];
-    sprintf(file_name_array, "output\\fourier_array_%ix%i.png", width, height);
-    image_array.create_from_threshold_matrix(array);
-    image_array.save(file_name_array);
-
-    Image image_transform = Image();
-    char file_name_transform[1000];
-    sprintf(file_name_transform, "output\\fourier_transform_%ix%i.png", width, height);
-    image_transform.create_from_threshold_matrix(transform);
-    image_transform.save(file_name_transform);
-    
+    generate_bayer_all(output_levels, true);
+    generate_blue_noise_all(sigma, coverage, output_levels, true);
+    generate_brown_noise_all(leaky_integrator, output_levels, true);
+    generate_white_noise_all(output_levels, true);
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -233,7 +137,7 @@ void error_diffusion_all(std::string file_name, Palette palette)
     return;
 }
 
-void generate_bayer(int size, int output_levels)
+void generate_bayer(int size, int output_levels, bool fourier)
 {
     Bayer bayer = Bayer(size, output_levels);
     Image image = Image();
@@ -245,23 +149,33 @@ void generate_bayer(int size, int output_levels)
     image.create_from_threshold_matrix(bayer.get_threshold_matrix());
     image.save(file_name);
 
+    if(fourier)
+    {
+        Fourier2D fourier_2d = Fourier2D(bayer.get_threshold_matrix(), true, true);
+        fourier_2d.dft();
+        fourier_2d.normalize_transform(output_levels);
+        sprintf(file_name, "output\\bayer_%ix%i_fourier.png", size, size);
+        image.create_from_threshold_matrix(fourier_2d.get_transform());
+        image.save(file_name);
+    }
+
     return;
 }
 
-void generate_bayer_all(int output_levels)
+void generate_bayer_all(int output_levels, bool fourier)
 {
     clock_t time_start = clock();
-    generate_bayer(2, output_levels);
+    generate_bayer(2, output_levels, fourier);
     clock_t time_2x2 = clock();
-    generate_bayer(4, output_levels);
+    generate_bayer(4, output_levels, fourier);
     clock_t time_4x4 = clock();
-    generate_bayer(8, output_levels);
+    generate_bayer(8, output_levels, fourier);
     clock_t time_8x8 = clock();
-    generate_bayer(16, output_levels);
+    generate_bayer(16, output_levels, fourier);
     clock_t time_16x16 = clock();
-    generate_bayer(32, output_levels);
+    generate_bayer(32, output_levels, fourier);
     clock_t time_32x32 = clock();
-    generate_bayer(64, output_levels);
+    generate_bayer(64, output_levels, fourier);
     clock_t time_end = clock();
 
     std::cout << "Bayer:" << std::endl;
@@ -276,7 +190,7 @@ void generate_bayer_all(int output_levels)
     return;
 }
 
-void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels)
+void generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels, bool fourier)
 {
     BlueNoise blue_noise = BlueNoise(width, height, sigma, coverage, output_levels);
     Image image = Image();
@@ -288,23 +202,33 @@ void generate_blue_noise(int width, int height, double sigma, double coverage, i
     image.create_from_threshold_matrix(blue_noise.get_threshold_matrix());
     image.save(file_name);
 
+    if(fourier)
+    {
+        Fourier2D fourier_2d = Fourier2D(blue_noise.get_threshold_matrix(), true, true);
+        fourier_2d.dft();
+        fourier_2d.normalize_transform(output_levels);
+        sprintf(file_name, "output\\blue_noise_%ix%i_s%.1f_fourier.png", width, height, sigma);
+        image.create_from_threshold_matrix(fourier_2d.get_transform());
+        image.save(file_name);
+    }
+
     return;
 }
 
-void generate_blue_noise_all(double sigma, double coverage, int output_levels)
+void generate_blue_noise_all(double sigma, double coverage, int output_levels, bool fourier)
 {
     clock_t time_start = clock();
-    generate_blue_noise(2, 2, sigma, std::max(coverage, 0.25), output_levels);
+    generate_blue_noise(2, 2, sigma, std::max(coverage, 0.25), output_levels, fourier);
     clock_t time_2x2 = clock();
-    generate_blue_noise(4, 4, sigma, std::max(coverage, 0.0625), output_levels);
+    generate_blue_noise(4, 4, sigma, std::max(coverage, 0.0625), output_levels, fourier);
     clock_t time_4x4 = clock();
-    generate_blue_noise(8, 8, sigma, coverage, output_levels);
+    generate_blue_noise(8, 8, sigma, coverage, output_levels, fourier);
     clock_t time_8x8 = clock();
-    generate_blue_noise(16, 16, sigma, coverage, output_levels);
+    generate_blue_noise(16, 16, sigma, coverage, output_levels, fourier);
     clock_t time_16x16 = clock();
-    generate_blue_noise(32, 32, sigma, coverage, output_levels);
+    generate_blue_noise(32, 32, sigma, coverage, output_levels, fourier);
     clock_t time_32x32 = clock();
-    generate_blue_noise(64, 64, sigma, coverage, output_levels);
+    generate_blue_noise(64, 64, sigma, coverage, output_levels, fourier);
     clock_t time_end = clock();
 
     std::cout << "Blue Noise:" << std::endl;
@@ -319,7 +243,7 @@ void generate_blue_noise_all(double sigma, double coverage, int output_levels)
     return;
 }
 
-void generate_brown_noise(int width, int height, double leaky_integrator, int output_levels)
+void generate_brown_noise(int width, int height, double leaky_integrator, int output_levels, bool fourier)
 {
     BrownNoise brown_noise = BrownNoise(width, height, leaky_integrator, output_levels);
     Image image = Image();
@@ -331,23 +255,33 @@ void generate_brown_noise(int width, int height, double leaky_integrator, int ou
     image.create_from_threshold_matrix(brown_noise.get_threshold_matrix());
     image.save(file_name);
 
+    if(fourier)
+    {
+        Fourier2D fourier_2d = Fourier2D(brown_noise.get_threshold_matrix(), true, true);
+        fourier_2d.dft();
+        fourier_2d.normalize_transform(output_levels);
+        sprintf(file_name, "output\\brown_noise_%ix%i_fourier.png", width, height);
+        image.create_from_threshold_matrix(fourier_2d.get_transform());
+        image.save(file_name);
+    }
+
     return;
 }
 
-void generate_brown_noise_all(double leaky_integrator, int output_levels)
+void generate_brown_noise_all(double leaky_integrator, int output_levels, bool fourier)
 {
     clock_t time_start = clock();
-    generate_brown_noise(2, 2, leaky_integrator, output_levels);
+    generate_brown_noise(2, 2, leaky_integrator, output_levels, fourier);
     clock_t time_2x2 = clock();
-    generate_brown_noise(4, 4, leaky_integrator, output_levels);
+    generate_brown_noise(4, 4, leaky_integrator, output_levels, fourier);
     clock_t time_4x4 = clock();
-    generate_brown_noise(8, 8, leaky_integrator, output_levels);
+    generate_brown_noise(8, 8, leaky_integrator, output_levels, fourier);
     clock_t time_8x8 = clock();
-    generate_brown_noise(16, 16, leaky_integrator, output_levels);
+    generate_brown_noise(16, 16, leaky_integrator, output_levels, fourier);
     clock_t time_16x16 = clock();
-    generate_brown_noise(32, 32, leaky_integrator, output_levels);
+    generate_brown_noise(32, 32, leaky_integrator, output_levels, fourier);
     clock_t time_32x32 = clock();
-    generate_brown_noise(64, 64, leaky_integrator, output_levels);
+    generate_brown_noise(64, 64, leaky_integrator, output_levels, fourier);
     clock_t time_end = clock();
 
     std::cout << "Brown Noise:" << std::endl;
@@ -362,7 +296,7 @@ void generate_brown_noise_all(double leaky_integrator, int output_levels)
     return;
 }
 
-void generate_white_noise(int width, int height, int output_levels)
+void generate_white_noise(int width, int height, int output_levels, bool fourier)
 {
     WhiteNoise white_noise = WhiteNoise(width, height, output_levels);
     Image image = Image();
@@ -374,23 +308,33 @@ void generate_white_noise(int width, int height, int output_levels)
     image.create_from_threshold_matrix(white_noise.get_threshold_matrix());
     image.save(file_name);
 
+    if(fourier)
+    {
+        Fourier2D fourier_2d = Fourier2D(white_noise.get_threshold_matrix(), true, true);
+        fourier_2d.dft();
+        fourier_2d.normalize_transform(output_levels);
+        sprintf(file_name, "output\\white_noise_%ix%i_fourier.png", width, height);
+        image.create_from_threshold_matrix(fourier_2d.get_transform());
+        image.save(file_name);
+    }
+
     return;
 }
 
-void generate_white_noise_all(int output_levels)
+void generate_white_noise_all(int output_levels, bool fourier)
 {
     clock_t time_start = clock();
-    generate_white_noise(2, 2, output_levels);
+    generate_white_noise(2, 2, output_levels, fourier);
     clock_t time_2x2 = clock();
-    generate_white_noise(4, 4, output_levels);
+    generate_white_noise(4, 4, output_levels, fourier);
     clock_t time_4x4 = clock();
-    generate_white_noise(8, 8, output_levels);
+    generate_white_noise(8, 8, output_levels, fourier);
     clock_t time_8x8 = clock();
-    generate_white_noise(16, 16, output_levels);
+    generate_white_noise(16, 16, output_levels, fourier);
     clock_t time_16x16 = clock();
-    generate_white_noise(32, 32, output_levels);
+    generate_white_noise(32, 32, output_levels, fourier);
     clock_t time_32x32 = clock();
-    generate_white_noise(64, 64, output_levels);
+    generate_white_noise(64, 64, output_levels, fourier);
     clock_t time_end = clock();
 
     std::cout << "White Noise:" << std::endl;

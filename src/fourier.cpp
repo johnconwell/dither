@@ -1,112 +1,42 @@
 #include "fourier.h"
-#include <iostream>
 
-void fourier()
+Fourier2D::Fourier2D()
 {
-    int width = 10;
-    int height = 10;
-    // fftw_complex *in = fftw_alloc_complex(N);
-    double *in = fftw_alloc_real(width * height);
-    fftw_complex *out = fftw_alloc_complex(width * height);
-    // fftw_plan p = fftw_plan_dft_1d(N, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
-    fftw_plan p1 = fftw_plan_dft_r2c_2d(height, width, in, out, FFTW_ESTIMATE);
-    fftw_plan p2 = fftw_plan_dft_c2r_2d(height, width, out, in, FFTW_ESTIMATE);
-
-    for(int y = 0; y < height; y++)
-    {
-        for(int x = 0; x < width; x++)
-        {
-            in[(y * height) + x] = static_cast<double>(x ^ y);
-            std::cout << in[(y * height) + x] << " ";
-        }
-        std::cout << std::endl;
-    }
-
-    fftw_execute(p1);
-
-    out[5][0] = 0;
-    out[5][1] = 0;
-    out[6][0] = 0;
-    out[6][1] = 0;
-    out[7][0] = 0;
-    out[7][1] = 0;
-    out[8][0] = 0;
-    out[8][1] = 0;
-
-    fftw_execute(p2);
-
-    for(int y = 0; y < height; y++)
-    {
-        for(int x = 0; x < width; x++)
-        {
-            std::cout << out[(y * height) + x][0] << " ";
-            std::cout << out[(y * height) + x][1] << "\t";
-        }
-        std::cout << std::endl;
-    }
-
-    for(int y = 0; y < height; y++)
-    {
-        for(int x = 0; x < width; x++)
-        {
-            in[(y * height) + x] /= (width * height);
-            std::cout << in[(y * height) + x] << " ";
-        }
-        std::cout << std::endl;
-    }
-
-    fftw_destroy_plan(p1);
-    fftw_destroy_plan(p2);
-    fftw_free(in);
-    fftw_free(out);
+    dataset = std::vector<std::vector<int>>(0, std::vector<int>(0, 0));
+    height = 0;
+    width = 0;
+    transform = std::vector<std::vector<int>>(0, std::vector<int>(0, 0));
+    remove_dc_offset = false;
+    center_output = false;
+    return;
 }
 
-// returns the fourier transform of the specified 1d dataset
-std::vector<int> fourier_1d(std::vector<int> dataset, bool center_output)
+Fourier2D::Fourier2D(std::vector<std::vector<int>> dataset, bool remove_dc_offset, bool center_output)
 {
-    size_t size = dataset.size();
+    this->dataset = dataset;
+    this->height = dataset.size();
+    this->width = dataset[0].size();
+    this->transform = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+    this->remove_dc_offset = remove_dc_offset;
+    this->center_output = center_output;
+    return;
+}
 
-    fftw_complex* in = fftw_alloc_complex(size);
-    fftw_complex* out = fftw_alloc_complex(size);
-    fftw_plan plan = fftw_plan_dft_1d(size, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+// returns the dataset
+std::vector<std::vector<int>> Fourier2D::get_dataset()
+{
+    return dataset;
+}
 
-    // fill the in array with data from dataset
-    for(size_t index_dataset = 0; index_dataset < size; index_dataset++)
-    {
-        in[index_dataset][0] = static_cast<double>(dataset[index_dataset]);
-        in[index_dataset][1] = 0.0; // no imaginary component
-    }
-
-    // center output
-    if(center_output)
-    {
-        for(size_t index_dataset = 0; index_dataset < size; index_dataset++)
-        {
-            in[index_dataset][0] *= pow(-1, index_dataset);
-        }
-    }
-
-    fftw_execute(plan);
-
-    std::vector<int> transform = std::vector<int>(size, 0);
-
-    // fill output vector with the results of the transform
-    for(size_t index_transform = 0; index_transform < size; index_transform++)
-    {
-        transform[index_transform] = static_cast<int>(magnitude(out[index_transform]));
-    }
-
-    fftw_destroy_plan(plan);
-    fftw_free(in);
-    fftw_free(out);
-
+// returns the transform
+std::vector<std::vector<int>> Fourier2D::get_transform()
+{
     return transform;
 }
 
-std::vector<std::vector<int>> fourier_transform_2d(std::vector<std::vector<int>> dataset, bool remove_dc_offset, bool center_output)
+// computes the dft of the dataset and stores the result in transform
+void Fourier2D::dft()
 {
-    size_t height = dataset.size();
-    size_t width = dataset[0].size();
     size_t size = width * height;
 
     fftw_complex *in = fftw_alloc_complex(size);
@@ -123,6 +53,7 @@ std::vector<std::vector<int>> fourier_transform_2d(std::vector<std::vector<int>>
         }
     }
 
+    // remove DC offset by subtracting the mean of the data
     if(remove_dc_offset)
     {
         int mean = 0;
@@ -160,8 +91,6 @@ std::vector<std::vector<int>> fourier_transform_2d(std::vector<std::vector<int>>
 
     fftw_execute(plan);
 
-    std::vector<std::vector<int>> transform = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
-
     // fill output vector with the results of the transform
     for(size_t y = 0; y < height; y++)
     {
@@ -175,12 +104,132 @@ std::vector<std::vector<int>> fourier_transform_2d(std::vector<std::vector<int>>
     fftw_free(in);
     fftw_free(out);
 
-    return transform;
+    return;
 }
 
+// computes the inverse dft of the transform and stores the result in dataset
+void Fourier2D::idft()
+{
+    size_t size = width * height;
 
+    fftw_complex *in = fftw_alloc_complex(size);
+    fftw_complex *out = fftw_alloc_complex(size);
+    fftw_plan plan = fftw_plan_dft_2d(height, width, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 
-double magnitude(fftw_complex &value)
+    // fill the in array with data from dataset
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            in[y * height + x][0] = static_cast<double>(transform[y][x]);
+            in[y * height + x][1] = 0.0;
+        }
+    }
+
+    // remove DC offset by subtracting the mean of the data
+    if(remove_dc_offset)
+    {
+        int mean = 0;
+
+        for(size_t y = 0; y < height; y++)
+        {
+            for(size_t x = 0; x < width; x++)
+            {
+                mean += in[y * height + x][0];
+            }
+        }
+
+        mean /= size;
+
+        for(size_t y = 0; y < height; y++)
+        {
+            for(size_t x = 0; x < width; x++)
+            {
+                in[y * height + x][0] -= mean;
+            }
+        }
+    }
+
+    // center output
+    if(center_output)
+    {
+        for(size_t y = 0; y < height; y++)
+        {
+            for(size_t x = 0; x < width; x++)
+            {
+                in[y * height + x][0] *= pow(-1, y + x);
+            }
+        }
+    }
+
+    fftw_execute(plan);
+
+    // fill output vector with the results of the transform
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            dataset[y][x] = static_cast<int>(magnitude(out[y * height + x]));
+        }
+    }
+
+    fftw_destroy_plan(plan);
+    fftw_free(in);
+    fftw_free(out);
+
+    return;
+}
+
+// normalizes the dataset (maps values to [0, output_levels - 1])
+void Fourier2D::normalize_dataset(size_t output_levels)
+{
+    normalize(dataset, output_levels);
+    return;
+}
+
+// normalize the transform (maps values to [0, output_levels - 1])
+void Fourier2D::normalize_transform(size_t output_levels)
+{
+    normalize(transform, output_levels);
+    return;
+}
+
+std::string Fourier2D::to_string()
+{
+
+}
+
+// returns the magnitude of a complex value
+double Fourier2D::magnitude(fftw_complex& value)
 {
     return sqrt(value[0] * value[0] + value[1] * value[1]);
+}
+
+// normalizes the array (maps values to [0, output_levels - 1])
+void Fourier2D::normalize(std::vector<std::vector<int>> &array, size_t output_levels)
+{
+    int array_min = INT_MAX;
+    int array_max = INT_MIN;
+
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            array_min = std::min(array_min, array[y][x]);
+            array_max = std::max(array_max, array[y][x]);
+        }
+    }
+
+    int array_range = array_max - array_min;
+
+    // normalize to output levels
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            array[y][x] = (array[y][x] - array_min) * (output_levels - 1) / array_range;
+        }
+    }
+
+    return;
 }

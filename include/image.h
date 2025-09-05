@@ -23,6 +23,7 @@ public:
     void set_pixel(Color color, unsigned int x, unsigned int y);
     std::vector<std::vector<int>> gradient_map();
     void create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
+    std::vector<std::vector<int>> get_threshold_matrix_from_image();
 };
 
 #endif
