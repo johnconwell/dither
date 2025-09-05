@@ -44,24 +44,99 @@ int main()
     // generate_white_noise_all(output_levels);
 
     // fourier();
-    int size = 64;
-    int scalar = 100;
-    std::vector<int> sin_wave = std::vector<int>(size, 0);
-    std::cout << "sin" << std::endl;
-    for(int index = 0; index < size; index++)
+    // int size = 64;
+    // int scalar = 100;
+    // std::vector<int> sin_wave = std::vector<int>(size, 0);
+    // std::cout << "sin" << std::endl;
+    // for(int index = 0; index < size; index++)
+    // {
+    //     sin_wave[index] = static_cast<int>(scalar * sin(index) + 0.5 * scalar * sin(index * 2) + 2 * scalar * sin(index * 3));
+    //     std::cout << index << " " << sin_wave[index] << std::endl;
+    // }
+
+    // std::vector<int> transform = fourier_1d(sin_wave, true);
+
+    // std::cout << "transform" << std::endl;
+    // for(int index = 0; index < size; index++)
+    // {
+    //     std::cout << index << " " << transform[index] << std::endl;
+    // }
+
+    size_t height = 32;
+    size_t width = 32;
+    int num_pixels = height * width;
+    size_t scalar = 100;
+    std::vector<std::vector<int>> array = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+    int array_min = INT_MAX;
+    int array_max = INT_MIN;
+    WhiteNoise wn = WhiteNoise(width, height, output_levels);
+    wn.generate_white_noise();
+    BlueNoise bn = BlueNoise(width, height, sigma, coverage, output_levels);
+    bn.generate_blue_noise();
+    array = bn.get_threshold_matrix();
+
+    std::cout << "array" << std::endl;
+
+    for(size_t y = 0; y < height; y++)
     {
-        sin_wave[index] = static_cast<int>(scalar * sin(index) + 0.5 * scalar * sin(index * 2) + 2 * scalar * sin(index * 3));
-        std::cout << index << " " << sin_wave[index] << std::endl;
+        for(size_t x = 0; x < width; x++)
+        {
+            // array[y][x] = static_cast<int>(scalar * sin(3 * y * 2 * std::numbers::pi / height)) + 0.5 * scalar * cos(5 * x * 2 * std::numbers::pi / width);
+            array_min = std::min(array_min, array[y][x]);
+            array_max = std::max(array_max, array[y][x]);
+            std::cout << array[y][x] << " ";
+        }
+
+        std::cout << std::endl;
     }
 
-    std::vector<int> transform = fourier_1d(sin_wave);
+    
+
+    std::vector<std::vector<int>> transform = fourier_transform_2d(array, true, false);
+
+    // transform[0][0] = 0.0;
+    // transform[0][0] = 0.0;
+    
+    int transform_min = INT_MAX;
+    int transform_max = INT_MIN;
 
     std::cout << "transform" << std::endl;
-    for(int index = 0; index < size; index++)
+    for(size_t y = 0; y < height; y++)
     {
-        std::cout << index << " " << transform[index] << std::endl;
+        for(size_t x = 0; x < width; x++)
+        {
+            transform_min = std::min(transform_min, transform[y][x]);
+            transform_max = std::max(transform_max, transform[y][x]);
+            std::cout << transform[y][x] << " ";
+        }
+
+        std::cout << std::endl;
     }
 
+    int array_range = array_max - array_min;
+    int transform_range = transform_max - transform_min;
+
+    // normalize to output levels
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            array[y][x] = (array[y][x] - array_min) * (output_levels - 1) / array_range;
+            transform[y][x] = (transform[y][x] - transform_min) * (output_levels - 1) / transform_range;
+        }
+    }
+
+    Image image_array = Image();
+    char file_name_array[1000];
+    sprintf(file_name_array, "output\\fourier_array_%ix%i.png", width, height);
+    image_array.create_from_threshold_matrix(array);
+    image_array.save(file_name_array);
+
+    Image image_transform = Image();
+    char file_name_transform[1000];
+    sprintf(file_name_transform, "output\\fourier_transform_%ix%i.png", width, height);
+    image_transform.create_from_threshold_matrix(transform);
+    image_transform.save(file_name_transform);
     
 
     std::cout << "finished" << std::endl;
