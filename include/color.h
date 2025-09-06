@@ -1,11 +1,11 @@
 #ifndef __COLOR_H
 #define __COLOR_H
 
-#include <cmath>
-#include <cstdint>
-#include <iomanip>
-#include <sstream>
-#include <string>
+#include <cmath> // sqrt()
+#include <cstdint> // int16_t, uint32_t
+#include <iomanip> // std::hex
+#include <sstream> // std::stringstream
+#include <string> // std::string
 
 struct Color
 {

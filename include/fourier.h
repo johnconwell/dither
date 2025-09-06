@@ -3,9 +3,9 @@
 
 #include <cmath> // min(), max()
 #include <cstddef> // size_t
-#include <fftw3.h>
-#include <string>
-#include <vector>
+#include <fftw3.h> // fft types + functions
+#include <string> // std::string
+#include <vector> // std::vector
 
 class Fourier2D
 {

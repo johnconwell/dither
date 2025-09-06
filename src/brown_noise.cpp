@@ -1,6 +1,4 @@
 #include "brown_noise.h"
-#include "blue_noise.h"
-#include <iostream>
 
 BrownNoise::BrownNoise()
 {

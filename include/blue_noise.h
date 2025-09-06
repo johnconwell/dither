@@ -1,15 +1,12 @@
 #ifndef __BLUE_NOISE_H
 #define __BLUE_NOISE_H
 
-#include <algorithm>
-#include <cfloat>
-#include <cmath>
-#include <cstdlib>
-#include <iostream>
-#include <random>
-#include <string>
-#include <utility>
-#include <vector>
+#include <cfloat> // DBL_MIN, DBL_MAX
+#include <cmath> // std::abs()
+#include <random> // std::random_device, std::mt19937, std::uniform_int_distribution
+#include <string> // std::string, std::to_string()
+#include <utility> // std::pair
+#include <vector> // std::vector
 
 struct EnergyLUT
 {

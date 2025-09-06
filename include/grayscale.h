@@ -1,9 +1,9 @@
 #ifndef __GRAYSCALE_H
 #define __GRAYSCALE_H
 
-#include "color.h"
-#include <cstdint>
-#include <unordered_map>
+#include "color.h" // Color::NUM_BYTES_COLOR, Color::INDEX_R, Color::INDEX_G, Color::INDEX_B
+#include <cstdint> // int16_t
+#include <unordered_map> // std::unordered_map
 
 enum GrayscaleMethod
 {

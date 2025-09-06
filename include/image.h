@@ -1,9 +1,9 @@
 #ifndef __IMAGE_H
 #define __IMAGE_H
 
-#include "color.h"
-#include "lodepng.h"
-#include <vector>
+#include "color.h" // Color struct
+#include "lodepng.h" // png encode/decode functions
+#include <vector> // std::vector
 
 class Image
 {

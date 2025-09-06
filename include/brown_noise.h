@@ -1,11 +1,12 @@
 #ifndef __BROWN_NOISE_H
 #define __BROWN_NOISE_H
 
-#include "white_noise.h"
-#include <cfloat>
-#include <random>
-#include <string>
-#include <vector>
+#include "white_noise.h" // for generating white noise seed, which is integrated to get brown noise
+#include <cfloat> // DBL_MIN, DBL_MAX
+#include <climits> // INT_MIN, INT_MAX
+#include <random> // std::random_device, std::mt19937, std::uniform_int_distribution
+#include <string> // std::string, std::to_string()
+#include <vector> // std::vector
 
 class BrownNoise
 {

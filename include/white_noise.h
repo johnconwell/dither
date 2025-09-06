@@ -1,9 +1,9 @@
 #ifndef __WHITE_NOISE_H
 #define __WHITE_NOISE_H
 
-#include <random>
-#include <string>
-#include <vector>
+#include <random> // std::random_device, std::mt19937, std::uniform_int_distribution
+#include <string> // std::string, std::to_string()
+#include <vector> // std::vector
 
 
 class WhiteNoise

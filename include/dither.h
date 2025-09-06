@@ -1,17 +1,12 @@
 #ifndef __DITHER_H
 #define __DITHER_H
 
-#include "error.h"
-#include "grayscale.h"
-#include "image.h"
-#include "lodepng.h"
-#include "palette.h"
-#include <cstddef>
-#include <iostream>
-#include <vector>
-
-
-
+#include "error_diffusion.h" // for error diffusion constants
+#include "grayscale.h" // channel_value()
+#include "image.h" // data structure for colors
+#include "lodepng.h" // for loading input pngs and saving to output pngs
+#include "palette.h" // datastructure for colors
+#include <vector> // std::vector
 
 class Dither
 {
@@ -32,6 +27,5 @@ private:
     void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
     void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
 };
-
 
 #endif

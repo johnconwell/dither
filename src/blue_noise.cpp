@@ -196,6 +196,7 @@ BlueNoise::BlueNoise(size_t width, size_t height, double sigma, double coverage,
     {
         this->coverage = 1.0 / (static_cast<double>(this->width) * static_cast<double>(this->height));
     }
+
     return;
 }
 

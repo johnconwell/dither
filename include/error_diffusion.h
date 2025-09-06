@@ -1,11 +1,12 @@
-#ifndef __ERROR_H
-#define __ERROR_H
+#ifndef __ERROR_DIFFUSION_H
+#define __ERROR_DIFFUSION_H
 
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <string> // std::string
+#include <unordered_map> // std::unordered_map
+#include <utility> // std::pair
+#include <vector> // std::vector
 
+// required for dictionary of std::pair<int, int>
 struct PairHash
 {
     template <class T1, class T2>
@@ -14,6 +15,16 @@ struct PairHash
         auto h1 = std::hash<T1>{}(p.first);
         auto h2 = std::hash<T2>{}(p.second);
         return h1 ^ (h2 << 1);
+    }
+};
+
+// required for dictionary of enum
+struct EnumHash
+{
+    template <typename T>
+    std::size_t operator()(T t) const
+    {
+        return static_cast<std::size_t>(t);
     }
 };
 
@@ -30,10 +41,10 @@ enum ErrorDiffusionAlgorithm
     SIERRA_LITE
 };
 
-struct Error
+struct ErrorDiffusion
 {
-    Error();
-    Error(ErrorDiffusionAlgorithm algorithm);
+    ErrorDiffusion();
+    ErrorDiffusion(ErrorDiffusionAlgorithm algorithm);
     std::string to_string();
 
     static inline constexpr std::pair<int, int> R    {1,  0};
@@ -68,6 +79,8 @@ struct Error
     static const std::unordered_map<std::pair<int, int>, const double, PairHash> SCALARS_SIERRA;
     static const std::unordered_map<std::pair<int, int>, const double, PairHash> SCALARS_SIERRA_TWO_ROW;
     static const std::unordered_map<std::pair<int, int>, const double, PairHash> SCALARS_SIERRA_LITE;
+
+    static const std::unordered_map<ErrorDiffusionAlgorithm, std::string, EnumHash> ALGORITHM_STRING;
 
     std::vector<std::pair<int, int>> coordinates;
     std::unordered_map<std::pair<int, int>, const double, PairHash> scalars;

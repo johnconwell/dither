@@ -1,11 +1,11 @@
 #ifndef __PALETTE_H
 #define __PALETTE_H
 
-#include "color.h"
-#include <climits>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include "color.h" // Color structure
+#include <climits> // INT_MAX
+#include <string> // std::string
+#include <unordered_map> // std::unordered_map
+#include <vector> // std::vector
 
 enum PresetPalette
 {

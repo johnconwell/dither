@@ -1,8 +1,8 @@
 #ifndef __BAYER_H
 #define __BAYER_H
 
-#include <string>
-#include <vector>
+#include <string> // std::string, std::to_string()
+#include <vector> // std::vector
 
 class Bayer
 {
