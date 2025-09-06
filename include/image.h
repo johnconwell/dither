@@ -7,11 +7,6 @@
 
 class Image
 {
-private:
-    std::vector<unsigned char> pixels;
-    unsigned int width;
-    unsigned int height;
-
 public:
     Image();
     void clear();
@@ -24,6 +19,11 @@ public:
     std::vector<std::vector<int>> gradient_map();
     void create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
     std::vector<std::vector<int>> get_threshold_matrix_from_image();
+
+private:
+    std::vector<unsigned char> pixels;
+    unsigned int width;
+    unsigned int height;
 };
 
 #endif

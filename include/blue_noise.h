@@ -34,7 +34,6 @@ class BlueNoise
 public:
     BlueNoise();
     BlueNoise(size_t width, size_t height, double sigma, double coverage, size_t output_levels);
-
     std::vector<std::vector<int>> get_threshold_matrix();
     void generate_blue_noise();
 

@@ -196,7 +196,31 @@ void Fourier2D::normalize_transform(size_t output_levels)
 
 std::string Fourier2D::to_string()
 {
+    std::string output = "";
 
+    output += "Dataset:\n";
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            output += std::to_string(dataset[y][x]) + " ";
+        }
+        
+        output += "\n";
+    }
+
+    output += "Transform:\n";
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            output += std::to_string(transform[y][x]) + " ";
+        }
+        
+        output += "\n";
+    }
+
+    return output;
 }
 
 // returns the magnitude of a complex value

@@ -5,7 +5,6 @@
 #include "grayscale.h"
 #include "image.h"
 #include "lodepng.h"
-#include "ordered.h"
 #include "palette.h"
 #include <cstddef>
 #include <iostream>
@@ -16,13 +15,6 @@
 
 class Dither
 {
-private:
-    Image image;
-    Palette palette;
-
-    void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
-    void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
-
 public:
     Dither();
     void set_palette(Palette palette);
@@ -31,7 +23,14 @@ public:
     void grayscale(GrayscaleMethod method);
     void reduce();
     void error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate);
-    void ordered(OrderedAlgorithm algorithm);
+    void ordered(std::vector<std::vector<int>> threshold_matrix);
+
+private:
+    Image image;
+    Palette palette;
+
+    void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
+    void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
 };
 
 

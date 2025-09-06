@@ -5,7 +5,6 @@
 #include "error.h"
 #include "fourier.h"
 #include "grayscale.h"
-#include "ordered.h"
 #include "palette.h"
 #include "white_noise.h"
 #include <chrono>

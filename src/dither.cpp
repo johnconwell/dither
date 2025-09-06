@@ -84,6 +84,14 @@ void Dither::error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate)
     return;
 }
 
+// reduces the image to the colors in the palette and dithers against the specified threshold matrix
+void Dither::ordered(std::vector<std::vector<int>> threshold_matrix)
+{
+
+
+    return;
+}
+
 // dithers using specified algorithm, does not alternate direction on odd rows
 void Dither::error_diffusion_standard(ErrorDiffusionAlgorithm algorithm)
 {
@@ -206,5 +214,3 @@ void Dither::error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm)
 
     return;
 }
-
-

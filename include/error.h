@@ -32,6 +32,10 @@ enum ErrorDiffusionAlgorithm
 
 struct Error
 {
+    Error();
+    Error(ErrorDiffusionAlgorithm algorithm);
+    std::string to_string();
+
     static inline constexpr std::pair<int, int> R    {1,  0};
     static inline constexpr std::pair<int, int> RR   {2,  0};
     static inline constexpr std::pair<int, int> LLD  {-2, 1};
@@ -67,10 +71,6 @@ struct Error
 
     std::vector<std::pair<int, int>> coordinates;
     std::unordered_map<std::pair<int, int>, const double, PairHash> scalars;
-
-    Error();
-    Error(ErrorDiffusionAlgorithm algorithm);
-    std::string to_string();
 };
 
 #endif
