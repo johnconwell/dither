@@ -104,12 +104,14 @@ Color Palette::nearest(Color color)
 Color Palette::nearest_grayscale(Color color)
 {
     int index_nearest = -1;
+    int distance = INT_MAX;
     int distance_nearest = INT_MAX;
     size_t colors_size = colors.size();
 
     for(size_t index_palette = 0; index_palette < colors_size; index_palette++)
     {
-        int distance = color.distance_grayscale(colors[index_palette]);
+        distance = color.distance_grayscale(colors[index_palette]);
+
         if(distance < distance_nearest)
         {
             distance_nearest = distance;
@@ -118,6 +120,31 @@ Color Palette::nearest_grayscale(Color color)
     }
 
     return colors[index_nearest];
+}
+
+// returns the index of the palette color nearest to and darker than the specified color
+size_t Palette::nearest_index_lower(Color color)
+{
+    size_t index_nearest = 0;
+    int distance = INT_MAX;
+    int distance_nearest = INT_MAX;
+    size_t colors_size = colors.size();
+
+    for(size_t index_palette = 0; index_palette < colors_size - 1; index_palette++)
+    {
+        if(colors[index_palette] < color)
+        {
+            distance = color.distance_squared(colors[index_palette]);
+
+            if(distance < distance_nearest)
+            {
+                distance_nearest = distance;
+                index_nearest = index_palette;
+            }
+        }
+    }
+
+    return index_nearest;
 }
 
 // returns a string representation of the palette

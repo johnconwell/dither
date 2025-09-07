@@ -5,6 +5,7 @@
 #include "error_diffusion.h"
 #include "fourier.h"
 #include "grayscale.h"
+#include "ordered.h"
 #include "palette.h"
 #include "white_noise.h"
 #include <chrono>
@@ -17,8 +18,11 @@
 #include <vector>
 
 std::string get_time_ms_string(clock_t start, clock_t end);
+std::vector<std::vector<int>> load_threshold_matrix_from_png(std::string file_name);
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark);
 std::string error_diffusion_all(std::string file_name, Palette palette, bool benchmark);
+std::string ordered(std::string file_name, Palette palette, std::vector<std::vector<int>> threshold_matrix, bool benchmark);
+std::string ordered_all(std::string file_name, Palette palette, bool benchmark);
 std::string generate_bayer(int size, int output_levels, bool fourier, bool benchmark);
 std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark);
 std::string generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels, bool fourier, bool benchmark);
@@ -30,20 +34,23 @@ std::string generate_white_noise_all(int output_levels, bool fourier, bool bench
 
 int main()
 {
+    std::string file_path_threshold_matrix = "output\\threshold_matrix\\";
     Palette palette_black_white = Palette("BLACK_WHITE", Palette::preset_palettes.at(PresetPalette::BLACK_WHITE));
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
-    Palette palette_twilight5 = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
+    Palette palette_twilight5 = Palette("TWILIGHT5", Palette::preset_palettes.at(PresetPalette::TWILIGHT5));
 
     int output_levels = Color::CHANNEL_MAX + 1;
     double sigma = 1.9;
     double coverage = 0.1;
     double leaky_integrator = 0.999;
     
-    std::cout << error_diffusion_all("statue", palette_black_white, true) << std::endl;
     std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
     std::cout << generate_blue_noise_all(sigma, coverage, output_levels, true, true) << std::endl;
     std::cout << generate_brown_noise_all(leaky_integrator, output_levels, true, true) << std::endl;
     std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
+
+    std::cout << error_diffusion_all("statue", palette_twilight5, true) << std::endl;
+    std::cout << ordered_all("statue", palette_twilight5, true) << std::endl;
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -52,6 +59,25 @@ int main()
 std::string get_time_ms_string(clock_t start, clock_t end)
 {
     return std::to_string(1000.0 * (end - start) / CLOCKS_PER_SEC) + " ms";
+}
+
+std::vector<std::vector<int>> load_threshold_matrix_from_png(std::string file_name)
+{
+    Image image = Image();
+    image.load(file_name.c_str());
+    size_t height = image.get_height();
+    size_t width = image.get_width();
+    std::vector<std::vector<int>> threshold_matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            threshold_matrix[y][x] = image.get_pixel(x, y).r;
+        }
+    }
+
+    return threshold_matrix;
 }
 
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark)
@@ -118,6 +144,77 @@ std::string error_diffusion_all(std::string file_name, Palette palette, bool ben
 
     output += error_diffusion(file_name, palette, ErrorDiffusionAlgorithm::SIERRA_LITE, false, benchmark);
     output += error_diffusion(file_name, palette, ErrorDiffusionAlgorithm::SIERRA_LITE, true, benchmark);
+
+    return output;
+}
+
+std::string ordered(std::string file_name, Palette palette, ThresholdMatrix threshold_matrix_type, bool benchmark)
+{
+    std::string output = "";
+    clock_t time_start;
+    clock_t time_end;
+    std::string file_path_threshold = "output\\threshold_matrix\\";
+    std::string file_path_input = "input\\" + file_name + ".png";
+    std::string file_path_output = "output\\ordered\\" + file_name;
+    std::string file_path_suffix = "";
+    std::vector<std::vector<int>> threshold_matrix = load_threshold_matrix_from_png(file_path_threshold + THRESHOLD_MATRIX_STRING.at(threshold_matrix_type) + ".png");
+    Dither dither = Dither();
+
+    dither.set_palette(palette);
+    dither.load(file_path_input.c_str());
+
+    if(benchmark)
+    {
+        char heading[100];
+        sprintf(heading, "%s time: ", THRESHOLD_MATRIX_STRING.at(threshold_matrix_type).c_str());
+        output += heading;
+        time_start = clock();
+    }
+
+    dither.ordered(threshold_matrix);
+
+    if(benchmark)
+    {
+        time_end = clock();
+        output += get_time_ms_string(time_start, time_end) + "\n";
+    }
+
+    dither.save((file_path_output + "_" + THRESHOLD_MATRIX_STRING.at(threshold_matrix_type) + ".png").c_str());
+
+    return output;
+}
+
+std::string ordered_all(std::string file_name, Palette palette, bool benchmark)
+{
+    std::string output = "Ordered:\n";
+
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_2X2, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_4X4, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_8X8, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_16X16, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_32X32, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BAYER_64X64, benchmark);
+
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_2X2, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_4X4, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_8X8, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_16X16, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_32X32, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BLUE_NOISE_64X64, benchmark);
+
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_2X2, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_4X4, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_8X8, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_16X16, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_32X32, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::BROWN_NOISE_64X64, benchmark);
+
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_2X2, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_4X4, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_8X8, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_16X16, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_32X32, benchmark);
+    output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_64X64, benchmark);
 
     return output;
 }
@@ -201,7 +298,7 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
     BlueNoise blue_noise = BlueNoise(width, height, sigma, coverage, output_levels);
     Image image = Image();
     char file_name[1000];
-    sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i_s%.1f.png", width, height, sigma);
+    sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i.png", width, height);
 
     if(benchmark)
     {
@@ -242,7 +339,7 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
             output += get_time_ms_string(time_start, time_end) + "\n";
         }
 
-        sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i_s%.1f_fourier.png", width, height, sigma);
+        sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i_fourier.png", width, height);
         image.create_from_threshold_matrix(fourier_2d.get_transform());
         image.save(file_name);
     }

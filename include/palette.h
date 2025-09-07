@@ -26,6 +26,7 @@ public:
     void sort();
     Color nearest(Color color);
     Color nearest_grayscale(Color color);
+    size_t nearest_index_lower(Color color);
 
     std::string to_string();
 

@@ -10,7 +10,7 @@ CFLAGS = -I$(IDIR) -L$(LDIR) -Wall -std=c++26
 LIBS = -llibfftw3-3 -llibfftw3f-3 -llibfftw3l-3 -lm
 
 # list of headers (dependencies) and rule to format them as [INCLUDE_DIR]/[HEADER]
-_DEPS = bayer.h blue_noise.h brown_noise.h color.h dither.h  fftw3.h fourier.h grayscale.h image.h lodepng.h palette.h white_noise.h
+_DEPS = bayer.h blue_noise.h brown_noise.h color.h dither.h  fftw3.h fourier.h grayscale.h image.h lodepng.h ordered.h palette.h white_noise.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
 # list of objects and rule to format them as [OBJECT_DIR]/[OBJECT]

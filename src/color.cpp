@@ -102,6 +102,12 @@ int Color::distance_grayscale(Color other)
     return other.r - this->r;
 }
 
+// returns the distance between the specified colors
+double Color::distance_between(Color color1, Color color2)
+{
+    return sqrt(static_cast<double>(((color1.r - color2.r) * (color1.r - color2.r)) + ((color1.g - color2.g) * (color1.g - color2.g)) + ((color1.b - color2.b) * (color1.b - color2.b))));
+}
+
 // returns a string representation of the color
 std::string Color::to_string()
 {

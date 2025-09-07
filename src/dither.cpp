@@ -1,4 +1,5 @@
 #include "dither.h"
+#include <iostream>
 
 // initializes empty image and palette
 Dither::Dither()
@@ -85,16 +86,45 @@ void Dither::error_diffusion(ErrorDiffusionAlgorithm algorithm, bool alternate)
 // reduces the image to the colors in the palette and dithers against the specified threshold matrix
 void Dither::ordered(std::vector<std::vector<int>> threshold_matrix)
 {
-    size_t height = image.get_height();
-    size_t width = image.get_width();
+    size_t image_height = image.get_height();
+    size_t image_width = image.get_width();
+    size_t palette_size = palette.size();
+    size_t threshold_matrix_height = threshold_matrix.size();
+    size_t threshold_matrix_width = threshold_matrix[0].size();
 
-    for(size_t y = 0; y < height; y++)
+    Color color;
+    size_t index_palette_nearest_lower;
+    Color palette_nearest_lower;
+    Color palette_nearest_upper;
+    int threshold_value;
+    int threshold_value_scaled;
+
+    palette.sort();
+
+    for(size_t y = 0; y < image_height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(size_t x = 0; x < image_width; x++)
         {
-            Color color = image.get_pixel(x, y);
-            Color threshold = Color(static_cast<int16_t>(threshold_matrix[y][x]), static_cast<int16_t>(threshold_matrix[y][x]), static_cast<int16_t>(threshold_matrix[y][x]), Color::CHANNEL_MAX);
-            
+            // std::cout << y << " " << x << std::endl;
+            color = image.get_pixel(x, y);
+            // std::cout << "here1" << std::endl;
+            index_palette_nearest_lower = palette.nearest_index_lower(color);
+            // std::cout << index_palette_nearest_lower << std::endl;
+            palette_nearest_lower = palette.get_color_at(index_palette_nearest_lower);
+            // std::cout << "here3" << std::endl;
+            palette_nearest_upper = palette.get_color_at(index_palette_nearest_lower + 1);
+            // std::cout << "here4" << std::endl;
+            threshold_value = threshold_matrix[y % threshold_matrix_height][x % threshold_matrix_width];
+            threshold_value_scaled = palette_nearest_lower.r + (threshold_value / palette_size);
+            // std::cout << index_palette_nearest_lower << std::endl;
+            if(color.r < threshold_value_scaled)
+            {
+                image.set_pixel(palette_nearest_lower, x, y);
+            }
+            else
+            {
+                image.set_pixel(palette_nearest_upper, x, y);
+            }
         }
     }
 
@@ -222,4 +252,67 @@ void Dither::error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm)
     }
 
     return;
+}
+
+// maps the values in the specified threshold matrix to the range 0.0-1.0
+std::vector<std::vector<double>> Dither::normalize_threshold_matrix(std::vector<std::vector<int>> threshold_matrix)
+{
+    size_t height = threshold_matrix.size();
+    size_t width = threshold_matrix[0].size();
+    std::vector<std::vector<double>> threshold_matrix_normalized = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
+    int threshold_matrix_min = INT_MAX;
+    int threshold_matrix_max = INT_MIN;
+    
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            threshold_matrix_min = std::min(threshold_matrix_min, threshold_matrix[y][x]);
+            threshold_matrix_max = std::max(threshold_matrix_max, threshold_matrix[y][x]);
+        }
+    }
+
+    double threshold_matrix_range = static_cast<double>(threshold_matrix_max) - static_cast<double>(threshold_matrix_min);
+
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            threshold_matrix_normalized[y][x] = static_cast<double>(threshold_matrix[y][x]) / threshold_matrix_range;
+        }
+    }
+
+    return threshold_matrix_normalized;
+}
+
+// maps the values in the specified threshold matrix to the specified range
+std::vector<std::vector<int>> Dither::scale_threshold_matrix(std::vector<std::vector<int>> threshold_matrix, int min, int max)
+{
+    size_t height = threshold_matrix.size();
+    size_t width = threshold_matrix[0].size();
+    std::vector<std::vector<int>> threshold_matrix_scaled = std::vector<std::vector<int>>(height, std::vector<int>(width, 0.0));
+    int threshold_matrix_min = INT_MAX;
+    int threshold_matrix_max = INT_MIN;
+    
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            threshold_matrix_min = std::min(threshold_matrix_min, threshold_matrix[y][x]);
+            threshold_matrix_max = std::max(threshold_matrix_max, threshold_matrix[y][x]);
+        }
+    }
+
+    int threshold_matrix_range = threshold_matrix_max - threshold_matrix_min;
+    int new_range = max - min;
+
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            threshold_matrix_scaled[y][x] = (threshold_matrix[y][x] - threshold_matrix_min) * new_range / threshold_matrix_range;
+        }
+    }
+
+    return threshold_matrix_scaled;
 }

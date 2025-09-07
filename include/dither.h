@@ -26,6 +26,8 @@ private:
 
     void error_diffusion_standard(ErrorDiffusionAlgorithm algorithm);
     void error_diffusion_alternate(ErrorDiffusionAlgorithm algorithm);
+    std::vector<std::vector<double>> normalize_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
+    std::vector<std::vector<int>> scale_threshold_matrix(std::vector<std::vector<int>> threshold_matrix, int min, int max);
 };
 
 #endif

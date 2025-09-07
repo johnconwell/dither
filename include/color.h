@@ -25,6 +25,8 @@ struct Color
     double distance_redmean(Color other);
     int distance_grayscale(Color other);
 
+    static double distance_between(Color color1, Color color2);
+
     std::string to_string();
 
     static inline constexpr int NUM_BYTES_COLOR = 4;
