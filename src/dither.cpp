@@ -88,43 +88,35 @@ void Dither::ordered(std::vector<std::vector<int>> threshold_matrix)
 {
     size_t image_height = image.get_height();
     size_t image_width = image.get_width();
-    size_t palette_size = palette.size();
     size_t threshold_matrix_height = threshold_matrix.size();
     size_t threshold_matrix_width = threshold_matrix[0].size();
 
+    palette.sort();
+
+    Color palette_pitch_vector = palette.pitch_vector();
+    int color_channel_max_half = Color::CHANNEL_MAX / 2;
     Color color;
-    size_t index_palette_nearest_lower;
-    Color palette_nearest_lower;
-    Color palette_nearest_upper;
     int threshold_value;
     int threshold_value_scaled;
-
-    palette.sort();
+    Color threshold_color_offset;
+    Color palette_nearest;
 
     for(size_t y = 0; y < image_height; y++)
     {
         for(size_t x = 0; x < image_width; x++)
         {
-            // std::cout << y << " " << x << std::endl;
             color = image.get_pixel(x, y);
-            // std::cout << "here1" << std::endl;
-            index_palette_nearest_lower = palette.nearest_index_lower(color);
-            // std::cout << index_palette_nearest_lower << std::endl;
-            palette_nearest_lower = palette.get_color_at(index_palette_nearest_lower);
-            // std::cout << "here3" << std::endl;
-            palette_nearest_upper = palette.get_color_at(index_palette_nearest_lower + 1);
-            // std::cout << "here4" << std::endl;
             threshold_value = threshold_matrix[y % threshold_matrix_height][x % threshold_matrix_width];
-            threshold_value_scaled = palette_nearest_lower.r + (threshold_value / palette_size);
-            // std::cout << index_palette_nearest_lower << std::endl;
-            if(color.r < threshold_value_scaled)
-            {
-                image.set_pixel(palette_nearest_lower, x, y);
-            }
-            else
-            {
-                image.set_pixel(palette_nearest_upper, x, y);
-            }
+            // normalize the threshold value by subracting half the color channel range (normalized values should range from -127 to 128)
+            threshold_value_scaled = threshold_value - color_channel_max_half;
+            // create a color offset at each position that is the average spread in the color space (palette_pitch_vector / color_channel_max) multiplied by the normalized threshold
+            threshold_color_offset = Color(
+                threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX,
+                threshold_value_scaled * palette_pitch_vector.g / Color::CHANNEL_MAX,
+                threshold_value_scaled * palette_pitch_vector.b / Color::CHANNEL_MAX,
+                Color::CHANNEL_MAX);
+            palette_nearest = palette.nearest(color + threshold_color_offset);
+            image.set_pixel(palette_nearest, x, y);
         }
     }
 

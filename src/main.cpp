@@ -37,6 +37,8 @@ int main()
     std::string file_path_threshold_matrix = "output\\threshold_matrix\\";
     Palette palette_black_white = Palette("BLACK_WHITE", Palette::preset_palettes.at(PresetPalette::BLACK_WHITE));
     Palette palette_1bit_monitor_glow = Palette("_1BIT_MONITOR_GLOW", Palette::preset_palettes.at(PresetPalette::_1BIT_MONITOR_GLOW));
+    Palette palette_titanstone = Palette("TITANSTONE", Palette::preset_palettes.at(PresetPalette::TITANSTONE));
+    Palette palette_2bit_demichrome = Palette("_2BIT_DEMICHROME", Palette::preset_palettes.at(PresetPalette::_2BIT_DEMICHROME));
     Palette palette_twilight5 = Palette("TWILIGHT5", Palette::preset_palettes.at(PresetPalette::TWILIGHT5));
 
     int output_levels = Color::CHANNEL_MAX + 1;
@@ -49,8 +51,8 @@ int main()
     std::cout << generate_brown_noise_all(leaky_integrator, output_levels, true, true) << std::endl;
     std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
 
-    std::cout << error_diffusion_all("statue", palette_twilight5, true) << std::endl;
-    std::cout << ordered_all("statue", palette_twilight5, true) << std::endl;
+    std::cout << error_diffusion_all("golden_gate", palette_2bit_demichrome, true) << std::endl;
+    std::cout << ordered_all("golden_gate", palette_2bit_demichrome, true) << std::endl;
 
     std::cout << "finished" << std::endl;
     return 0;

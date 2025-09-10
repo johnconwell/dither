@@ -3,6 +3,10 @@ IDIR = ./include
 LDIR = ./lib
 ODIR = ./obj
 SDIR = ./src
+OUTDIR = ./output
+EDDIR = $(OUTDIR)/error_diffusion
+ORDDIR = $(OUTDIR)/ordered
+TMDIR = $(OUTDIR)/threshold_matrix
 
 CC = g++
 CFLAGS = -I$(IDIR) -L$(LDIR) -Wall -std=c++26
@@ -28,4 +32,4 @@ main : $(OBJ)
 .PHONY : clean
 
 clean:
-	rm -f $(ODIR)/*.o
+	rm -f $(ODIR)/*.o $(EDDIR)/*.png $(ORDDIR)/*.png $(TMDIR)/*.png

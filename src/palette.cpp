@@ -4,6 +4,8 @@
 const std::unordered_map<PresetPalette, std::vector<Color>> Palette::preset_palettes = {
     {PresetPalette::BLACK_WHITE, Palette::BLACK_WHITE},
     {PresetPalette::_1BIT_MONITOR_GLOW, Palette::_1BIT_MONITOR_GLOW},
+    {PresetPalette::TITANSTONE, Palette::TITANSTONE},
+    {PresetPalette::_2BIT_DEMICHROME, Palette::_2BIT_DEMICHROME},
     {PresetPalette::TWILIGHT5, Palette::TWILIGHT5}
 };
 
@@ -145,6 +147,40 @@ size_t Palette::nearest_index_lower(Color color)
     }
 
     return index_nearest;
+}
+
+// returns the average distance between colors in the palette as a scalar
+size_t Palette::pitch_scalar()
+{
+    size_t colors_size = colors.size();
+    double distance = 0.0;
+
+    for(size_t index_colors = 0; index_colors < colors_size - 1; index_colors++)
+    {
+        distance += Color::distance_between(colors[index_colors], colors[index_colors + 1]);
+    }
+
+    return distance / static_cast<double>(colors_size - 1);
+}
+
+// returns the average distance between colors in the palette as a color vector
+Color Palette::pitch_vector()
+{
+    size_t colors_size = colors.size();
+    Color distance_vector = Color(0, 0, 0, Color::CHANNEL_MAX);
+
+    for(size_t index_colors = 0; index_colors < colors_size - 1; index_colors++)
+    {
+        distance_vector.r += std::abs(colors[index_colors].r - colors[index_colors + 1].r);
+        distance_vector.g += std::abs(colors[index_colors].g - colors[index_colors + 1].g);
+        distance_vector.b += std::abs(colors[index_colors].b - colors[index_colors + 1].b);
+    }
+
+    distance_vector.r /= static_cast<double>(colors_size - 1);
+    distance_vector.g /= static_cast<double>(colors_size - 1);
+    distance_vector.b /= static_cast<double>(colors_size - 1);
+
+    return distance_vector;
 }
 
 // returns a string representation of the palette
