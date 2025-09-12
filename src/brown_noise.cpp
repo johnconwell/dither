@@ -11,8 +11,6 @@ BrownNoise::BrownNoise()
     input_max = INT_MIN;
     integrated_min = DBL_MAX;
     integrated_max = DBL_MIN;
-    normalized_min = INT_MAX;
-    normalized_max = INT_MIN;
     return;
 }
 
@@ -27,8 +25,6 @@ BrownNoise::BrownNoise(size_t width, size_t height, double leaky_integrator, siz
     this->input_max = INT_MIN;
     this->integrated_min = DBL_MAX;
     this->integrated_max = DBL_MIN;
-    this->normalized_min = INT_MAX;
-    this->normalized_max = INT_MIN;
     return;
 }
 

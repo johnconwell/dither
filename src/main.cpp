@@ -16,6 +16,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "noise2d.h"
 
 std::string get_time_ms_string(clock_t start, clock_t end);
 std::vector<std::vector<int>> load_threshold_matrix_from_png(std::string file_name);
@@ -46,13 +47,30 @@ int main()
     double coverage = 0.1;
     double leaky_integrator = 0.999;
     
-    std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
-    std::cout << generate_blue_noise_all(sigma, coverage, output_levels, true, true) << std::endl;
-    std::cout << generate_brown_noise_all(leaky_integrator, output_levels, true, true) << std::endl;
-    std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
+    // std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
+    // std::cout << generate_blue_noise_all(sigma, coverage, output_levels, true, true) << std::endl;
+    // std::cout << generate_brown_noise_all(leaky_integrator, output_levels, true, true) << std::endl;
+    // std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
 
-    std::cout << error_diffusion_all("golden_gate", palette_2bit_demichrome, true) << std::endl;
-    std::cout << ordered_all("golden_gate", palette_2bit_demichrome, true) << std::endl;
+    // std::cout << error_diffusion_all("forest", palette_black_white, true) << std::endl;
+    // std::cout << ordered_all("forest", palette_black_white, true) << std::endl;
+
+    size_t width = 16;
+    size_t height = 16;
+    size_t output_levels_noise2d = 256;
+    Noise2D noise_double = Noise2D<int>(width, height, output_levels_noise2d);
+    noise_double.generate_brown_noise(0.75);
+
+    for(size_t y = 0; y < height; y++)
+    {
+        for(size_t x = 0; x < width; x++)
+        {
+            std::cout << noise_double.get_noise_at(x, y) << " ";
+        }
+        std::cout << std::endl;
+    }
+
+
 
     std::cout << "finished" << std::endl;
     return 0;

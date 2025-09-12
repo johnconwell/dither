@@ -9,6 +9,7 @@ EnergyLUT::EnergyLUT()
     value_highest_energy = 0.0;
     coordinate_lowest_energy = std::pair<int, int>(-1, -1);
     coordinate_highest_energy = std::pair<int, int>(-1, -1);
+    return;
 }
 
 EnergyLUT::EnergyLUT(size_t width, size_t height)
@@ -17,19 +18,20 @@ EnergyLUT::EnergyLUT(size_t width, size_t height)
     this->width = width;
     LUT = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
     value_lowest_energy = DBL_MAX;
-    value_highest_energy = DBL_MIN;
+    value_highest_energy = 0.0;
     coordinate_lowest_energy = std::pair<int, int>(-1, -1);
     coordinate_highest_energy = std::pair<int, int>(-1, -1);
+    return;
 }
 
 // populates the energy LUT from a new binary pattern
 void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigma)
 {
     value_lowest_energy = DBL_MAX;
-    value_highest_energy = DBL_MIN;
+    value_highest_energy = 0.0;
     double half_width = static_cast<double>(width) / 2.0;
     double half_height = static_cast<double>(height) / 2.0;
-    double two_sigma_squared = 2 * sigma * sigma;
+    double two_sigma_squared = 2.0 * sigma * sigma;
 
     for(size_t y = 0; y < height; y++)
     {
@@ -80,6 +82,8 @@ void EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigm
             }
         }
     }
+
+    return;
 }
 
 // updates each element of the LUT to account for a change in the binary pattern
@@ -214,6 +218,7 @@ void BlueNoise::generate_blue_noise()
     generate_dither_array_phase_2();
     generate_dither_array_phase_3();
     normalize_dither_array();
+    return;
 }
 
 // generates the initial binary pattern by randomly placing (width * height * coverage) ones, then evenly spacing them using void and cluster algorithm
