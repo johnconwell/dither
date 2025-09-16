@@ -1,13 +1,11 @@
 #include "bayer.h"
-#include "blue_noise.h"
-#include "brown_noise.h"
 #include "dither.h"
 #include "error_diffusion.h"
 #include "fourier.h"
 #include "grayscale.h"
+#include "noise2d.h"
 #include "ordered.h"
 #include "palette.h"
-#include "white_noise.h"
 #include <chrono>
 #include <cmath>
 #include <format>
@@ -16,20 +14,20 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "noise2d.h"
 
 std::string get_time_ms_string(clock_t start, clock_t end);
 std::vector<std::vector<int>> load_threshold_matrix_from_png(std::string file_name);
+std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height);
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark);
 std::string error_diffusion_all(std::string file_name, Palette palette, bool benchmark);
 std::string ordered(std::string file_name, Palette palette, std::vector<std::vector<int>> threshold_matrix, bool benchmark);
 std::string ordered_all(std::string file_name, Palette palette, bool benchmark);
 std::string generate_bayer(int size, int output_levels, bool fourier, bool benchmark);
 std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark);
-std::string generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels, bool fourier, bool benchmark);
-std::string generate_blue_noise_all(double sigma, double coverage, int output_levels, bool fourier, bool benchmark);
-std::string generate_brown_noise(int width, int height, double leaky_integrator, int output_levels, bool fourier, bool benchmark);
-std::string generate_brown_noise_all(double leaky_integrator, int output_levels, bool fourier, bool benchmark);
+std::string generate_blue_noise(int width, int height, double sigma, int output_levels, bool fourier, bool benchmark);
+std::string generate_blue_noise_all(double sigma, int output_levels, bool fourier, bool benchmark);
+std::string generate_brown_noise(int width, int height, double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark);
+std::string generate_brown_noise_all(double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark);
 std::string generate_white_noise(int width, int height, int output_levels, bool fourier, bool benchmark);
 std::string generate_white_noise_all(int output_levels, bool fourier, bool benchmark);
 
@@ -43,34 +41,18 @@ int main()
     Palette palette_twilight5 = Palette("TWILIGHT5", Palette::preset_palettes.at(PresetPalette::TWILIGHT5));
 
     int output_levels = Color::CHANNEL_MAX + 1;
-    double sigma = 1.9;
-    double coverage = 0.1;
+    double sigma_blue_noise = 1.9;
     double leaky_integrator = 0.999;
+    size_t kernel_size = 3;
+    double sigma_brown_noise = 1.0;
     
-    // std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
-    // std::cout << generate_blue_noise_all(sigma, coverage, output_levels, true, true) << std::endl;
-    // std::cout << generate_brown_noise_all(leaky_integrator, output_levels, true, true) << std::endl;
-    // std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
+    std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
+    std::cout << generate_blue_noise_all(sigma_blue_noise, output_levels, true, true) << std::endl;
+    std::cout << generate_brown_noise_all(leaky_integrator, kernel_size, sigma_brown_noise, output_levels, true, true) << std::endl;
+    std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
 
     // std::cout << error_diffusion_all("forest", palette_black_white, true) << std::endl;
     // std::cout << ordered_all("forest", palette_black_white, true) << std::endl;
-
-    size_t width = 16;
-    size_t height = 16;
-    size_t output_levels_noise2d = 256;
-    Noise2D noise_double = Noise2D<int>(width, height, output_levels_noise2d);
-    noise_double.generate_brown_noise(0.75);
-
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            std::cout << noise_double.get_noise_at(x, y) << " ";
-        }
-        std::cout << std::endl;
-    }
-
-
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -98,6 +80,21 @@ std::vector<std::vector<int>> load_threshold_matrix_from_png(std::string file_na
     }
 
     return threshold_matrix;
+}
+
+std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height)
+{
+    std::vector<std::vector<int>> matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+
+    for(std::size_t y = 0; y < height; y++)
+    {
+        for(std::size_t x = 0; x < width; x++)
+        {
+            matrix[y][x] = noise.get_noise_at(x, y);
+        }
+    }
+
+    return matrix;
 }
 
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark)
@@ -310,12 +307,12 @@ std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark)
     return output;
 }
 
-std::string generate_blue_noise(int width, int height, double sigma, double coverage, int output_levels, bool fourier, bool benchmark)
+std::string generate_blue_noise(int width, int height, double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
     clock_t time_start;
     clock_t time_end;
-    BlueNoise blue_noise = BlueNoise(width, height, sigma, coverage, output_levels);
+    Noise2D<int> blue_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
     sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i.png", width, height);
@@ -328,7 +325,7 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
         time_start = clock();
     }
     
-    blue_noise.generate_blue_noise();
+    blue_noise.generate_blue_noise(sigma);
 
     if(benchmark)
     {
@@ -336,7 +333,9 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
         output += get_time_ms_string(time_start, time_end) + "\n";
     }
 
-    image.create_from_threshold_matrix(blue_noise.get_threshold_matrix());
+    std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(blue_noise, width, height);
+
+    image.create_from_threshold_matrix(threshold_matrix);
     image.save(file_name);
 
     if(fourier)
@@ -349,7 +348,7 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
             time_start = clock();
         }
 
-        Fourier2D fourier_2d = Fourier2D(blue_noise.get_threshold_matrix(), true, true);
+        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
@@ -367,26 +366,26 @@ std::string generate_blue_noise(int width, int height, double sigma, double cove
     return output;
 }
 
-std::string generate_blue_noise_all(double sigma, double coverage, int output_levels, bool fourier, bool benchmark)
+std::string generate_blue_noise_all(double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "Blue Noise:\n";
 
-    output += generate_blue_noise(2, 2, sigma, std::max(coverage, 0.25), output_levels, fourier, benchmark);
-    output += generate_blue_noise(4, 4, sigma, std::max(coverage, 0.0625), output_levels, fourier, benchmark);
-    output += generate_blue_noise(8, 8, sigma, coverage, output_levels, fourier, benchmark);
-    output += generate_blue_noise(16, 16, sigma, coverage, output_levels, fourier, benchmark);
-    output += generate_blue_noise(32, 32, sigma, coverage, output_levels, fourier, benchmark);
-    output += generate_blue_noise(64, 64, sigma, coverage, output_levels, fourier, benchmark);
+    output += generate_blue_noise(2, 2, sigma, output_levels, fourier, benchmark);
+    output += generate_blue_noise(4, 4, sigma, output_levels, fourier, benchmark);
+    output += generate_blue_noise(8, 8, sigma, output_levels, fourier, benchmark);
+    output += generate_blue_noise(16, 16, sigma, output_levels, fourier, benchmark);
+    output += generate_blue_noise(32, 32, sigma, output_levels, fourier, benchmark);
+    output += generate_blue_noise(64, 64, sigma, output_levels, fourier, benchmark);
 
     return output;
 }
 
-std::string generate_brown_noise(int width, int height, double leaky_integrator, int output_levels, bool fourier, bool benchmark)
+std::string generate_brown_noise(int width, int height, double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
     clock_t time_start;
     clock_t time_end;
-    BrownNoise brown_noise = BrownNoise(width, height, leaky_integrator, output_levels);
+    Noise2D<int> brown_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
     sprintf(file_name, "output\\threshold_matrix\\brown_noise_%ix%i.png", width, height);
@@ -399,7 +398,7 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
         time_start = clock();
     }
 
-    brown_noise.generate_brown_noise();
+    brown_noise.generate_brown_noise(leaky_integrator, kernel_size, sigma);
 
     if(benchmark)
     {
@@ -407,7 +406,9 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
         output += get_time_ms_string(time_start, time_end) + "\n";
     }
 
-    image.create_from_threshold_matrix(brown_noise.get_threshold_matrix());
+    std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(brown_noise, width, height);
+
+    image.create_from_threshold_matrix(threshold_matrix);
     image.save(file_name);
 
     if(fourier)
@@ -420,7 +421,7 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
             time_start = clock();
         }
 
-        Fourier2D fourier_2d = Fourier2D(brown_noise.get_threshold_matrix(), true, true);
+        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
@@ -438,16 +439,16 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
     return output;
 }
 
-std::string generate_brown_noise_all(double leaky_integrator, int output_levels, bool fourier, bool benchmark)
+std::string generate_brown_noise_all(double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "Brown Noise:\n";
 
-    output += generate_brown_noise(2, 2, leaky_integrator, output_levels, fourier, benchmark);
-    output += generate_brown_noise(4, 4, leaky_integrator, output_levels, fourier, benchmark);
-    output += generate_brown_noise(8, 8, leaky_integrator, output_levels, fourier, benchmark);
-    output += generate_brown_noise(16, 16, leaky_integrator, output_levels, fourier, benchmark);
-    output += generate_brown_noise(32, 32, leaky_integrator, output_levels, fourier, benchmark);
-    output += generate_brown_noise(64, 64, leaky_integrator, output_levels, fourier, benchmark);
+    output += generate_brown_noise(2, 2, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
+    output += generate_brown_noise(4, 4, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
+    output += generate_brown_noise(8, 8, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
+    output += generate_brown_noise(16, 16, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
+    output += generate_brown_noise(32, 32, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
+    output += generate_brown_noise(64, 64, leaky_integrator, kernel_size, sigma, output_levels, fourier, benchmark);
 
     return output;
 }
@@ -457,7 +458,7 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
     std::string output = "";
     clock_t time_start;
     clock_t time_end;
-    WhiteNoise white_noise = WhiteNoise(width, height, output_levels);
+    Noise2D<int> white_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
     sprintf(file_name, "output\\threshold_matrix\\white_noise_%ix%i.png", width, height);
@@ -478,7 +479,9 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
         output += get_time_ms_string(time_start, time_end) + "\n";
     }
 
-    image.create_from_threshold_matrix(white_noise.get_threshold_matrix());
+    std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(white_noise, width, height);
+
+    image.create_from_threshold_matrix(threshold_matrix);
     image.save(file_name);
 
     if(fourier)
@@ -491,7 +494,7 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
             time_start = clock();
         }
 
-        Fourier2D fourier_2d = Fourier2D(white_noise.get_threshold_matrix(), true, true);
+        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
