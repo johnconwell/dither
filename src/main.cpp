@@ -42,7 +42,7 @@ int main()
 
     int output_levels = Color::CHANNEL_MAX + 1;
     double sigma_blue_noise = 1.9;
-    double leaky_integrator = 0.999;
+    double leaky_integrator = 0.5;
     size_t kernel_size = 3;
     double sigma_brown_noise = 1.0;
     
@@ -51,8 +51,10 @@ int main()
     std::cout << generate_brown_noise_all(leaky_integrator, kernel_size, sigma_brown_noise, output_levels, true, true) << std::endl;
     std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
 
-    // std::cout << error_diffusion_all("forest", palette_black_white, true) << std::endl;
-    // std::cout << ordered_all("forest", palette_black_white, true) << std::endl;
+    std::cout << error_diffusion_all("golden_gate", palette_black_white, true) << std::endl;
+    std::cout << ordered_all("golden_gate", palette_black_white, true) << std::endl;
+
+
 
     std::cout << "finished" << std::endl;
     return 0;
