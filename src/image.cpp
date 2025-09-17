@@ -100,10 +100,10 @@ std::vector<std::vector<int>> Image::gradient_map()
 }
 
 // fills image with a grayscale representation of specified threshold map
-void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix)
+void Image::create_from_matrix(std::vector<std::vector<int>> matrix)
 {
-    height = threshold_matrix.size();
-    width = threshold_matrix[0].size();
+    height = matrix.size();
+    width = matrix[0].size();
     pixels.resize(width * height * Color::NUM_BYTES_COLOR);
 
     for(size_t y = 0; y < height; y++)
@@ -111,9 +111,9 @@ void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold
         for(size_t x = 0; x < width; x++)
         {
             int index_pixels = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
-            pixels[index_pixels + 0] = threshold_matrix[y][x];
-            pixels[index_pixels + 1] = threshold_matrix[y][x];
-            pixels[index_pixels + 2] = threshold_matrix[y][x];
+            pixels[index_pixels + 0] = matrix[y][x];
+            pixels[index_pixels + 1] = matrix[y][x];
+            pixels[index_pixels + 2] = matrix[y][x];
             pixels[index_pixels + 3] = Color::CHANNEL_MAX;
         }
     }
@@ -122,17 +122,17 @@ void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold
 }
 
 // creates a threshold matrix from the loaded image, assuming image is grayscale
-std::vector<std::vector<int>> Image::get_threshold_matrix_from_image()
+std::vector<std::vector<int>> Image::get_matrix_from_image()
 {
-    std::vector<std::vector<int>> threshold_matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+    std::vector<std::vector<int>> matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
 
     for(size_t y = 0; y < height; y++)
     {
         for(size_t x = 0; x < width; x++)
         {
-            threshold_matrix[y][x] = pixels[y * Color::NUM_BYTES_COLOR + x];
+            matrix[y][x] = pixels[y * Color::NUM_BYTES_COLOR + x];
         }
     }
 
-    return threshold_matrix;
+    return matrix;
 }

@@ -2,6 +2,7 @@
 #define __IMAGE_H
 
 #include "color.h" // Color struct
+#include "grayscale.h" // Grayscale::channel_value
 #include "lodepng.h" // png encode/decode functions
 #include <vector> // std::vector
 
@@ -17,8 +18,8 @@ public:
     Color get_pixel(unsigned int x, unsigned int y);
     void set_pixel(Color color, unsigned int x, unsigned int y);
     std::vector<std::vector<int>> gradient_map();
-    void create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
-    std::vector<std::vector<int>> get_threshold_matrix_from_image();
+    void create_from_matrix(std::vector<std::vector<int>> matrix);
+    std::vector<std::vector<int>> get_matrix_from_image();
 
 private:
     std::vector<unsigned char> pixels;

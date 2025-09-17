@@ -28,7 +28,9 @@
 #include <cmath> // acos
 #include <random> // std::random_device, std::mt19337, std::uniform_int_distribution
 #include <stdexcept> // std::out_of_range
+#include <type_traits> // std::is_floating_point
 #include <vector> // std::vector
+#include <iostream>
 
 const char* NOISE2D_VERSION_STRING = "1.0.0";
 
@@ -79,10 +81,10 @@ public:
      * 
      * @param leaky_integrator A scalar that is multiplied by the integral sum each step to ensure the noise does not deviate far from zero in large images.
      * If not specified, a default value of 0.999 is used.
-     * @param kernel_size The size of the Gaussian kernel used to convolute the white noise into brown noise.
+     * @param kernel_size The size of the Gaussian kernel used to convolve the white noise into brown noise.
      * A size of 3 corresponds to a 3x3 kernel.
      * If not specified, a default value of 3 is used.
-     * @param sigma The standard deviation of the Gaussian kernel used to convolute the white noise into brown noise.
+     * @param sigma The standard deviation of the Gaussian kernel used to convolve the white noise into brown noise.
      * A larger value of sigma results in blurrier noise and vice versa.
      */
     void generate_brown_noise(double leaky_integrator = 0.999, std::size_t kernel_size = 3, double sigma = 1.0);
@@ -168,13 +170,15 @@ public:
 };
 
 /**
- * Method to convolute a matrix against a kernel.
+ * Method to convolve a matrix against a kernel.
  * 
- * @param matrix The 2d matrix to convolute.
+ * @param matrix The 2d matrix to convolve.
  * @param kernel The kernel used to perform the convolution.
- * @returns The convoluted matrix.
+ * @returns The convolved matrix.
+ * @note Type T may be an integral or floating-point type, type K must be floating-point type.
  */
-std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matrix, std::vector<std::vector<double>> kernel, double leaky_integrator);
+template <typename T, typename K>
+std::vector<std::vector<T>> convolve(std::vector<std::vector<T>> matrix, std::vector<std::vector<K>> kernel, double leaky_integrator);
 
 /**
  * Method to generate a Gaussian kernel.
@@ -184,8 +188,10 @@ std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matr
  * @param sigma The standard deviation of the Gaussian kernel.
  * A larger value of sigma gives more weight to cells further from the center cell and vice versa.
  * @returns The generated kernel.
+ * @note Type T must be a floating-point type.
  */
-std::vector<std::vector<double>> gaussian_kernel(std::size_t size, double sigma);
+template <typename T>
+std::vector<std::vector<T>> gaussian_kernel(std::size_t size, double sigma);
 
 template<typename T>
 Noise2D<T>::Noise2D(std::size_t width, std::size_t height, std::size_t output_levels)
@@ -230,7 +236,7 @@ template<typename T>
 void Noise2D<T>::generate_brown_noise(double leaky_integrator, std::size_t kernel_size, double sigma)
 {
     std::vector<std::vector<double>> data_white_noise = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
-    std::vector<std::vector<double>> kernel = gaussian_kernel(kernel_size, sigma);
+    std::vector<std::vector<double>> kernel = gaussian_kernel<double>(kernel_size, sigma);
     std::random_device rd;
     std::mt19937 mt(rd());
     std::uniform_real_distribution<> dis(0, 1);
@@ -246,8 +252,8 @@ void Noise2D<T>::generate_brown_noise(double leaky_integrator, std::size_t kerne
         }
     }
 
-    // convolute the white noise matrix
-    std::vector<std::vector<double>> data_temporary = convolute(data_white_noise, kernel, leaky_integrator);
+    // convolve the white noise matrix
+    std::vector<std::vector<double>> data_temporary = convolve<double, double>(data_white_noise, kernel, leaky_integrator);
     
     for(std::size_t y = 0; y < height; y++)
     {
@@ -641,7 +647,8 @@ void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern,
     return;
 }
 
-std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matrix, std::vector<std::vector<double>> kernel, double leaky_integrator)
+template <typename T, typename K>
+std::vector<std::vector<T>> convolve(std::vector<std::vector<T>> matrix, std::vector<std::vector<K>> kernel, double leaky_integrator)
 {
     const std::size_t matrix_height = matrix.size();
     const std::size_t matrix_width = matrix[0].size();
@@ -650,7 +657,7 @@ std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matr
     const std::size_t kernel_height_half = kernel_height / 2;
     const std::size_t kernel_width_half = kernel_width / 2;
     const double kernel_area = static_cast<double>(kernel_height * kernel_width);
-    std::vector<std::vector<double>> convoluted_matrix = std::vector<std::vector<double>>(matrix_height, std::vector<double>(matrix_width, 0.0));
+    std::vector<std::vector<T>> convolved_matrix = std::vector<std::vector<T>>(matrix_height, std::vector<T>(matrix_width, 0.0));
     double sum = 0.0;
 
     for(std::size_t my = 0; my < matrix_height; my++)
@@ -665,20 +672,21 @@ std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matr
                 {
                     std::size_t dy = (matrix_height + ((my + ky - kernel_height_half) % matrix_height)) % matrix_height;
                     std::size_t dx = (matrix_width + ((mx + kx - kernel_width_half) % matrix_width)) % matrix_width;
-                    sum += matrix[dy][dx] * kernel[ky][kx] * leaky_integrator;
+                    sum += static_cast<double>(matrix[dy][dx]) * static_cast<double>(kernel[ky][kx]) * leaky_integrator;
                 }
             }
             
-            convoluted_matrix[my][mx] = sum / kernel_area;
+            convolved_matrix[my][mx] = static_cast<T>(sum / kernel_area);
         }
     }
 
-    return convoluted_matrix;
+    return convolved_matrix;
 }
 
-std::vector<std::vector<double>> gaussian_kernel(std::size_t size, double sigma)
+template <typename T>
+std::vector<std::vector<T>> gaussian_kernel(std::size_t size, double sigma)
 {
-    std::vector<std::vector<double>> kernel = std::vector<std::vector<double>>(size, std::vector<double>(size, 0.0));
+    std::vector<std::vector<T>> kernel = std::vector<std::vector<T>>(size, std::vector<T>(size, static_cast<T>(0)));
 
     const double NOISE2D_PI = acos(-1.0);
     const int half_size = size / 2;
