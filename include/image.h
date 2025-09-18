@@ -4,6 +4,7 @@
 #include "color.h" // Color struct
 #include "grayscale.h" // Grayscale::channel_value
 #include "lodepng.h" // png encode/decode functions
+#include <algorithm> // std::clamp
 #include <vector> // std::vector
 
 class Image
@@ -17,7 +18,6 @@ public:
     size_t save(const char* file_name);
     Color get_pixel(unsigned int x, unsigned int y);
     void set_pixel(Color color, unsigned int x, unsigned int y);
-    std::vector<std::vector<int>> gradient_map();
     void create_from_matrix(std::vector<std::vector<int>> matrix);
     std::vector<std::vector<int>> get_matrix_from_image();
 

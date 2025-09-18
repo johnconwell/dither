@@ -23,6 +23,8 @@ std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusi
 std::string error_diffusion_all(std::string file_name, Palette palette, bool benchmark);
 std::string ordered(std::string file_name, Palette palette, std::vector<std::vector<int>> threshold_matrix, bool benchmark);
 std::string ordered_all(std::string file_name, Palette palette, bool benchmark);
+std::string convolve_image(std::string file_name, Kernel kernel_type, bool benchmark);
+std::string convolve_all(std::string file_name, bool benchmark);
 std::string generate_bayer(int size, int output_levels, bool fourier, bool benchmark);
 std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark);
 std::string generate_blue_noise(int width, int height, double sigma, int output_levels, bool fourier, bool benchmark);
@@ -54,69 +56,7 @@ int main()
 
     // std::cout << error_diffusion_all("golden_gate", palette_black_white, true) << std::endl;
     // std::cout << ordered_all("golden_gate", palette_black_white, true) << std::endl;
-
-    Image image = Image();
-    std::vector<std::vector<int>> convolved_image;
-
-    std::vector<std::vector<int>> image_matrix = load_matrix_from_png("input\\face.png");
-    image.create_from_matrix(image_matrix);
-    image.save("output\\face_grayscale.png");
-
-    convolved_image = convolve(image_matrix, KERNEL_RIDGE_4, 1.0);
-    image.create_from_matrix(convolved_image);
-    image.save("output\\face_ridge_4.png");
-
-    convolved_image = convolve(image_matrix, KERNEL_RIDGE_8, 1.0);
-    image.create_from_matrix(convolved_image);
-    image.save("output\\face_ridge_8.png");
-
-    convolved_image = convolve(image_matrix, KERNEL_SHARPEN_4, 1.0);
-    image.create_from_matrix(convolved_image);
-    image.save("output\\face_sharpen_4.png");
-
-    convolved_image = convolve(image_matrix, KERNEL_SHARPEN_8, 1.0);
-    image.create_from_matrix(convolved_image);
-    image.save("output\\face_sharpen_8.png");
-
-    convolved_image = convolve(image_matrix, KERNEL_BOX_BLUR, 1.0);
-    image.create_from_matrix(convolved_image);
-    image.save("output\\face_box_blur.png");
-
-    // std::vector<std::vector<int>> threshold_matrix_convolved = convolve();
-    // std::vector<std::vector<float>> gaussian_kernel_float = gaussian_kernel<float>(size, sigma_brown_noise);
-
-    // for(std::size_t y = 0; y < size; y++)
-    // {
-    //     for(std::size_t x = 0; x < size; x++)
-    //     {
-    //         std::cout << gaussian_kernel_float[y][x] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // std::cout << std::endl;
-
-    // std::vector<std::vector<double>> gaussian_kernel_double = gaussian_kernel<double>(size, sigma_brown_noise);
-
-    // for(std::size_t y = 0; y < size; y++)
-    // {
-    //     for(std::size_t x = 0; x < size; x++)
-    //     {
-    //         std::cout << gaussian_kernel_double[y][x] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // std::cout << std::endl;
-
-    // std::vector<std::vector<long double>> gaussian_kernel_long_double = gaussian_kernel<long double>(size, sigma_brown_noise);
-
-    // for(std::size_t y = 0; y < size; y++)
-    // {
-    //     for(std::size_t x = 0; x < size; x++)
-    //     {
-    //         std::cout << gaussian_kernel_long_double[y][x] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
+    std::cout << convolve_all("golden_gate", true);
 
     std::cout << "finished" << std::endl;
     return 0;
@@ -298,6 +238,83 @@ std::string ordered_all(std::string file_name, Palette palette, bool benchmark)
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_16X16, benchmark);
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_32X32, benchmark);
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_64X64, benchmark);
+
+    return output;
+}
+
+std::string convolve_image(std::string file_name, Kernel kernel_type, bool benchmark)
+{
+    std::string output = "";
+    clock_t time_start;
+    clock_t time_end;
+    std::string file_path_suffix = ".png";
+    std::string file_path_input = "input\\" + file_name;
+    std::string file_path_output = "output\\convolve\\" + file_name;
+    Image image = Image();
+    std::vector<std::vector<double>> kernel;
+    std::vector<std::vector<int>> convolved_image;
+    std::vector<std::vector<int>> image_matrix = load_matrix_from_png(file_path_input + file_path_suffix);
+
+    switch(kernel_type)
+    {
+    case Kernel::RIDGE_4:
+        kernel = KERNEL_RIDGE_4;
+        break;
+    case Kernel::RIDGE_8:
+        kernel = KERNEL_RIDGE_8;
+        break;
+    case Kernel::SHARPEN_4:
+        kernel = KERNEL_SHARPEN_4;
+        break;
+    case Kernel::SHARPEN_8:
+        kernel = KERNEL_SHARPEN_8;
+        break;
+    case Kernel::BOX_BLUR:
+        kernel = KERNEL_BOX_BLUR;
+        break;
+    case Kernel::GAUSSIAN_BLUR:
+        kernel = KERNEL_GAUSSIAN_BLUR;
+        break;
+    case Kernel::UNSHARP_MASK:
+        kernel = KERNEL_UNSHARP_MASK;
+        break;
+    default:
+        break;
+    }
+
+    if(benchmark)
+    {
+        char heading[100];
+        sprintf(heading, "%s time: ", KERNEL_STRING.at(kernel_type).c_str());
+        output += heading;
+        time_start = clock();
+    }
+
+    convolved_image = convolve<int, double>(image_matrix, kernel, 1.0);
+
+    if(benchmark)
+    {
+        time_end = clock();
+        output += get_time_ms_string(time_start, time_end) + "\n";
+    }
+
+    image.create_from_matrix(convolved_image);
+    image.save((file_path_output + "_" + KERNEL_STRING.at(kernel_type) + file_path_suffix).c_str());
+
+    return output;
+}
+
+std::string convolve_all(std::string file_name, bool benchmark)
+{
+    std::string output = "Convolve:\n";
+
+    output += convolve_image(file_name, Kernel::RIDGE_4, benchmark);
+    output += convolve_image(file_name, Kernel::RIDGE_8, benchmark);
+    output += convolve_image(file_name, Kernel::SHARPEN_4, benchmark);
+    output += convolve_image(file_name, Kernel::SHARPEN_8, benchmark);
+    output += convolve_image(file_name, Kernel::BOX_BLUR, benchmark);
+    output += convolve_image(file_name, Kernel::GAUSSIAN_BLUR, benchmark);
+    output += convolve_image(file_name, Kernel::UNSHARP_MASK, benchmark);
 
     return output;
 }

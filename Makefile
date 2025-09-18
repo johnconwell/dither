@@ -4,6 +4,7 @@ LDIR = ./lib
 ODIR = ./obj
 SDIR = ./src
 OUTDIR = ./output
+CNVDIR = $(OUTDIR)/convolve
 EDDIR = $(OUTDIR)/error_diffusion
 ORDDIR = $(OUTDIR)/ordered
 TMDIR = $(OUTDIR)/threshold_matrix
@@ -32,4 +33,4 @@ main : $(OBJ)
 .PHONY : clean
 
 clean:
-	rm -f $(ODIR)/*.o $(EDDIR)/*.png $(ORDDIR)/*.png $(TMDIR)/*.png
+	rm -f $(ODIR)/*.o $(CNVDIR)/*.png $(EDDIR)/*.png $(ORDDIR)/*.png $(TMDIR)/*.png

@@ -656,7 +656,6 @@ std::vector<std::vector<T>> convolve(std::vector<std::vector<T>> matrix, std::ve
     const std::size_t kernel_width = kernel[0].size();
     const std::size_t kernel_height_half = kernel_height / 2;
     const std::size_t kernel_width_half = kernel_width / 2;
-    const double kernel_area = static_cast<double>(kernel_height * kernel_width);
     std::vector<std::vector<T>> convolved_matrix = std::vector<std::vector<T>>(matrix_height, std::vector<T>(matrix_width, 0.0));
     double sum = 0.0;
 
@@ -676,7 +675,7 @@ std::vector<std::vector<T>> convolve(std::vector<std::vector<T>> matrix, std::ve
                 }
             }
             
-            convolved_matrix[my][mx] = static_cast<T>(sum / kernel_area);
+            convolved_matrix[my][mx] = static_cast<T>(sum);
         }
     }
 

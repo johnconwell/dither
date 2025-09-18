@@ -82,24 +82,7 @@ void Image::set_pixel(Color color, unsigned int x, unsigned int y)
     return;
 }
 
-// returns a width x height sized array where each cell is the gradient of the corresponding pixel on the image
-// gradient is the difference between the current pixel and the average of neighbors
-std::vector<std::vector<int>> Image::gradient_map()
-{
-    std::vector<std::vector<int>> gm(width, std::vector<int>(height, 0));
-
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            
-        }
-    }
-
-    return gm;
-}
-
-// fills image with a grayscale representation of specified threshold map
+// fills image with a grayscale representation of specified matrix
 void Image::create_from_matrix(std::vector<std::vector<int>> matrix)
 {
     height = matrix.size();
@@ -110,10 +93,11 @@ void Image::create_from_matrix(std::vector<std::vector<int>> matrix)
     {
         for(size_t x = 0; x < width; x++)
         {
+            unsigned char channel_value = static_cast<unsigned char>(std::clamp(matrix[y][x], 0, Color::CHANNEL_MAX));
             int index_pixels = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
-            pixels[index_pixels + 0] = matrix[y][x];
-            pixels[index_pixels + 1] = matrix[y][x];
-            pixels[index_pixels + 2] = matrix[y][x];
+            pixels[index_pixels + 0] = channel_value;
+            pixels[index_pixels + 1] = channel_value;
+            pixels[index_pixels + 2] = channel_value;
             pixels[index_pixels + 3] = Color::CHANNEL_MAX;
         }
     }
