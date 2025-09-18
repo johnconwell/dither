@@ -1,4 +1,5 @@
 #include "bayer.h"
+#include "benchmark.h"
 #include "dither.h"
 #include "error_diffusion.h"
 #include "fourier.h"
@@ -7,7 +8,6 @@
 #include "noise2d.h"
 #include "ordered.h"
 #include "palette.h"
-#include <chrono>
 #include <cmath>
 #include <format>
 #include <iostream>
@@ -16,12 +16,11 @@
 #include <unordered_map>
 #include <vector>
 
-std::string get_time_ms_string(clock_t start, clock_t end);
 std::vector<std::vector<int>> load_matrix_from_png(std::string file_name);
 std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height);
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark);
 std::string error_diffusion_all(std::string file_name, Palette palette, bool benchmark);
-std::string ordered(std::string file_name, Palette palette, std::vector<std::vector<int>> threshold_matrix, bool benchmark);
+std::string ordered(std::string file_name, Palette palette, ThresholdMatrix threshold_matrix_type, bool benchmark);
 std::string ordered_all(std::string file_name, Palette palette, bool benchmark);
 std::string convolve_image(std::string file_name, Kernel kernel_type, bool benchmark);
 std::string convolve_all(std::string file_name, bool benchmark);
@@ -49,22 +48,17 @@ int main()
     size_t kernel_size = 3;
     double sigma_brown_noise = 1.0;
     
-    // std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
-    // std::cout << generate_blue_noise_all(sigma_blue_noise, output_levels, true, true) << std::endl;
-    // std::cout << generate_brown_noise_all(leaky_integrator, kernel_size, sigma_brown_noise, output_levels, true, true) << std::endl;
-    // std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
+    std::cout << generate_bayer_all(output_levels, true, true) << std::endl;
+    std::cout << generate_blue_noise_all(sigma_blue_noise, output_levels, true, true) << std::endl;
+    std::cout << generate_brown_noise_all(leaky_integrator, kernel_size, sigma_brown_noise, output_levels, true, true) << std::endl;
+    std::cout << generate_white_noise_all(output_levels, true, true) << std::endl;
 
-    // std::cout << error_diffusion_all("golden_gate", palette_black_white, true) << std::endl;
-    // std::cout << ordered_all("golden_gate", palette_black_white, true) << std::endl;
+    std::cout << error_diffusion_all("golden_gate", palette_black_white, true) << std::endl;
+    std::cout << ordered_all("golden_gate", palette_black_white, true) << std::endl;
     std::cout << convolve_all("golden_gate", true);
 
     std::cout << "finished" << std::endl;
     return 0;
-}
-
-std::string get_time_ms_string(clock_t start, clock_t end)
-{
-    return std::to_string(1000.0 * (end - start) / CLOCKS_PER_SEC) + " ms";
 }
 
 std::vector<std::vector<int>> load_matrix_from_png(std::string file_name)
@@ -106,8 +100,7 @@ std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     std::string file_path_input = "input\\" + file_name + ".png";
     std::string file_path_output = "output\\error_diffusion\\" + file_name;
     std::string file_path_suffix = "";
@@ -121,15 +114,15 @@ std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusi
         char heading[100];
         sprintf(heading, "%s %s time: ", ErrorDiffusion::ALGORITHM_STRING.at(algorithm).c_str(), alternate ? "alternate" : "standard");
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     dither.error_diffusion(algorithm, alternate);
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     dither.save((file_path_output + "_" + ErrorDiffusion::ALGORITHM_STRING.at(algorithm) + ".png").c_str());
@@ -174,8 +167,7 @@ std::string error_diffusion_all(std::string file_name, Palette palette, bool ben
 std::string ordered(std::string file_name, Palette palette, ThresholdMatrix threshold_matrix_type, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     std::string file_path_threshold = "output\\threshold_matrix\\";
     std::string file_path_input = "input\\" + file_name + ".png";
     std::string file_path_output = "output\\ordered\\" + file_name;
@@ -191,15 +183,15 @@ std::string ordered(std::string file_name, Palette palette, ThresholdMatrix thre
         char heading[100];
         sprintf(heading, "%s time: ", THRESHOLD_MATRIX_STRING.at(threshold_matrix_type).c_str());
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     dither.ordered(threshold_matrix);
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     dither.save((file_path_output + "_" + THRESHOLD_MATRIX_STRING.at(threshold_matrix_type) + ".png").c_str());
@@ -245,8 +237,7 @@ std::string ordered_all(std::string file_name, Palette palette, bool benchmark)
 std::string convolve_image(std::string file_name, Kernel kernel_type, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     std::string file_path_suffix = ".png";
     std::string file_path_input = "input\\" + file_name;
     std::string file_path_output = "output\\convolve\\" + file_name;
@@ -287,15 +278,15 @@ std::string convolve_image(std::string file_name, Kernel kernel_type, bool bench
         char heading[100];
         sprintf(heading, "%s time: ", KERNEL_STRING.at(kernel_type).c_str());
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     convolved_image = convolve<int, double>(image_matrix, kernel, 1.0);
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     image.create_from_matrix(convolved_image);
@@ -322,8 +313,7 @@ std::string convolve_all(std::string file_name, bool benchmark)
 std::string generate_bayer(int size, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     Image image = Image();
     char file_name[1000];
     sprintf(file_name, "output\\threshold_matrix\\bayer_%ix%i.png", size, size);
@@ -333,7 +323,7 @@ std::string generate_bayer(int size, int output_levels, bool fourier, bool bench
         char heading[100];
         sprintf(heading, "%ix%i time: ", size, size);
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     Bayer bayer = Bayer(size, output_levels);
@@ -341,8 +331,8 @@ std::string generate_bayer(int size, int output_levels, bool fourier, bool bench
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     image.create_from_matrix(bayer.get_threshold_matrix());
@@ -355,7 +345,7 @@ std::string generate_bayer(int size, int output_levels, bool fourier, bool bench
             char heading[100];
             sprintf(heading, "%ix%i fourier time: ", size, size);
             output += heading;
-            time_start = clock();
+            bm.start();
         }
 
         Fourier2D fourier_2d = Fourier2D(bayer.get_threshold_matrix(), true, true);
@@ -364,8 +354,8 @@ std::string generate_bayer(int size, int output_levels, bool fourier, bool bench
 
         if(benchmark)
         {
-            time_end = clock();
-            output += get_time_ms_string(time_start, time_end) + "\n";
+            bm.stop();
+            output += std::to_string(bm.time_us()) + " us\n";;
         }
 
         sprintf(file_name, "output\\threshold_matrix\\bayer_%ix%i_fourier.png", size, size);
@@ -393,8 +383,7 @@ std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark)
 std::string generate_blue_noise(int width, int height, double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     Noise2D<int> blue_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
@@ -405,15 +394,15 @@ std::string generate_blue_noise(int width, int height, double sigma, int output_
         char heading[100];
         sprintf(heading, "%ix%i time: ", width, height);
         output += heading;
-        time_start = clock();
+        bm.start();
     }
     
     blue_noise.generate_blue_noise(sigma);
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(blue_noise, width, height);
@@ -428,7 +417,7 @@ std::string generate_blue_noise(int width, int height, double sigma, int output_
             char heading[100];
             sprintf(heading, "%ix%i fourier time: ", width, height);
             output += heading;
-            time_start = clock();
+            bm.start();
         }
 
         Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
@@ -437,8 +426,8 @@ std::string generate_blue_noise(int width, int height, double sigma, int output_
 
         if(benchmark)
         {
-            time_end = clock();
-            output += get_time_ms_string(time_start, time_end) + "\n";
+            bm.stop();
+            output += std::to_string(bm.time_us()) + " us\n";;
         }
 
         sprintf(file_name, "output\\threshold_matrix\\blue_noise_%ix%i_fourier.png", width, height);
@@ -466,8 +455,7 @@ std::string generate_blue_noise_all(double sigma, int output_levels, bool fourie
 std::string generate_brown_noise(int width, int height, double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     Noise2D<int> brown_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
@@ -478,15 +466,15 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
         char heading[100];
         sprintf(heading, "%ix%i time: ", width, height);
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     brown_noise.generate_brown_noise(leaky_integrator, kernel_size, sigma);
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(brown_noise, width, height);
@@ -501,7 +489,7 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
             char heading[100];
             sprintf(heading, "%ix%i fourier time: ", width, height);
             output += heading;
-            time_start = clock();
+            bm.start();
         }
 
         Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
@@ -510,8 +498,8 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
 
         if(benchmark)
         {
-            time_end = clock();
-            output += get_time_ms_string(time_start, time_end) + "\n";
+            bm.stop();
+            output += std::to_string(bm.time_us()) + " us\n";;
         }
 
         sprintf(file_name, "output\\threshold_matrix\\brown_noise_%ix%i_fourier.png", width, height);
@@ -539,8 +527,7 @@ std::string generate_brown_noise_all(double leaky_integrator, std::size_t kernel
 std::string generate_white_noise(int width, int height, int output_levels, bool fourier, bool benchmark)
 {
     std::string output = "";
-    clock_t time_start;
-    clock_t time_end;
+    Benchmark bm = Benchmark();
     Noise2D<int> white_noise = Noise2D<int>(width, height, output_levels);
     Image image = Image();
     char file_name[1000];
@@ -551,15 +538,15 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
         char heading[100];
         sprintf(heading, "%ix%i time: ", width, height);
         output += heading;
-        time_start = clock();
+        bm.start();
     }
 
     white_noise.generate_white_noise();
 
     if(benchmark)
     {
-        time_end = clock();
-        output += get_time_ms_string(time_start, time_end) + "\n";
+        bm.stop();
+        output += std::to_string(bm.time_us()) + " us\n";;
     }
 
     std::vector<std::vector<int>> threshold_matrix = create_matrix_from_noise(white_noise, width, height);
@@ -574,7 +561,7 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
             char heading[100];
             sprintf(heading, "%ix%i fourier time: ", width, height);
             output += heading;
-            time_start = clock();
+            bm.start();
         }
 
         Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
@@ -583,8 +570,8 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
 
         if(benchmark)
         {
-            time_end = clock();
-            output += get_time_ms_string(time_start, time_end) + "\n";
+            bm.stop();
+            output += std::to_string(bm.time_us()) + " us\n";;
         }
 
         sprintf(file_name, "output\\threshold_matrix\\white_noise_%ix%i_fourier.png", width, height);
