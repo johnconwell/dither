@@ -2,7 +2,7 @@
 #include "benchmark.h"
 #include "dither.h"
 #include "error_diffusion.h"
-#include "fourier.h"
+#include "fourier2d.h"
 #include "grayscale.h"
 #include "kernel.h"
 #include "noise2d.h"
@@ -17,15 +17,21 @@
 #include <vector>
 
 std::vector<std::vector<int>> load_matrix_from_png(std::string file_name);
-std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height);
+template <typename T>
+std::vector<std::vector<T>> create_matrix_from_noise(Noise2D<T> noise, std::size_t width, std::size_t height);
+
 std::string error_diffusion(std::string file_name, Palette palette, ErrorDiffusionAlgorithm algorithm, bool alternate, bool benchmark);
 std::string error_diffusion_all(std::string file_name, Palette palette, bool benchmark);
+
 std::string ordered(std::string file_name, Palette palette, ThresholdMatrix threshold_matrix_type, bool benchmark);
 std::string ordered_all(std::string file_name, Palette palette, bool benchmark);
+
 std::string convolve_image(std::string file_name, Kernel kernel_type, bool benchmark);
 std::string convolve_all(std::string file_name, bool benchmark);
+
 std::string generate_bayer(int size, int output_levels, bool fourier, bool benchmark);
 std::string generate_bayer_all(int output_levels, bool fourier, bool benchmark);
+
 std::string generate_blue_noise(int width, int height, double sigma, int output_levels, bool fourier, bool benchmark);
 std::string generate_blue_noise_all(double sigma, int output_levels, bool fourier, bool benchmark);
 std::string generate_brown_noise(int width, int height, double leaky_integrator, std::size_t kernel_size, double sigma, int output_levels, bool fourier, bool benchmark);
@@ -82,9 +88,10 @@ std::vector<std::vector<int>> load_matrix_from_png(std::string file_name)
     return matrix;
 }
 
-std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height)
+template <typename T>
+std::vector<std::vector<T>> create_matrix_from_noise(Noise2D<T> noise, std::size_t width, std::size_t height)
 {
-    std::vector<std::vector<int>> matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
+    std::vector<std::vector<T>> matrix = std::vector<std::vector<T>>(height, std::vector<T>(width, static_cast<T>(0)));
 
     for(std::size_t y = 0; y < height; y++)
     {
@@ -230,7 +237,7 @@ std::string ordered_all(std::string file_name, Palette palette, bool benchmark)
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_16X16, benchmark);
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_32X32, benchmark);
     output += ordered(file_name, palette, ThresholdMatrix::WHITE_NOISE_64X64, benchmark);
-
+    
     return output;
 }
 
@@ -348,7 +355,7 @@ std::string generate_bayer(int size, int output_levels, bool fourier, bool bench
             bm.start();
         }
 
-        Fourier2D fourier_2d = Fourier2D(bayer.get_threshold_matrix(), true, true);
+        Fourier2D<int> fourier_2d = Fourier2D<int>(bayer.get_threshold_matrix(), true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
@@ -420,7 +427,7 @@ std::string generate_blue_noise(int width, int height, double sigma, int output_
             bm.start();
         }
 
-        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
+        Fourier2D<int> fourier_2d = Fourier2D<int>(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
@@ -492,7 +499,7 @@ std::string generate_brown_noise(int width, int height, double leaky_integrator,
             bm.start();
         }
 
-        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
+        Fourier2D<int> fourier_2d = Fourier2D<int>(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
@@ -564,7 +571,7 @@ std::string generate_white_noise(int width, int height, int output_levels, bool 
             bm.start();
         }
 
-        Fourier2D fourier_2d = Fourier2D(threshold_matrix, true, true);
+        Fourier2D<int> fourier_2d = Fourier2D<int>(threshold_matrix, true, true);
         fourier_2d.dft();
         fourier_2d.normalize_transform(output_levels);
 
