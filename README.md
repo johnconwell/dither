@@ -21,6 +21,50 @@ Use the `dither` command followed by the input and output flags and any number o
 | `t, --temporal <TEMPORAL_METHOD>,<TEMPORAL_FRAMES>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image temporally using the specified temporal dithering method, color mapping method, and number of frames. Output can be saved to .gif or .png | Optional |
 | `-b, --benchmark` | Displays benchmark information to stdout | Optional |
 
+### Grayscale
+Images can be converted to greyscale with the `-g, --grayscale` command.</br>
+`dither -i INPUT_FILE_PATH -o OUTPUT_FILE_PATH -g GRAYSCALE_WEIGHTS`</br>
+See [Grayscale Channel Weights](#grayscale-channel-weights) for available RGB channel weighting.
+
+### Convolution
+Images can be convolved with the `-c, --convolve` command</br>
+`dither -i INPUT_FILE_PATH -o OUTPUT_FILE_PATH -c KERNEL`</br>
+The input file and output files must be .png.</br>
+See [Convolution Kernels](#convolution-kernels) for available kernels.
+
+### Reduce
+Images can have their palette reduced with the `-r, --reduce` command</br>
+`dither -i INPUT_FILE_PATH -o OUTPUT_FILE_PATH -r MAPPING_METHOD,PALETTE`</br>
+The input file and output files must be .png.</br>
+See [Palette Mapping Methods](#palette-mapping-methods) for available color mapping methods from input image pixel colors to palette colors.</br>
+See [Palettes](#palettes) for available palettes to map to.
+
+### Error Diffusion Dithering
+Images can be dithered using an error diffusion algorithm with the `-e, --error-diffusion` command</br>
+`dither -i INPUT_FILE_PATH -o OUTPUT_FILE_PATH -e ALGORITHM,MAPPING_METHOD,PALETTE`</br>
+The input file and output files must be .png.</br>
+See [Error Diffusion Algorithms](#error-diffusion-algorithms) for available error diffusion algorithms (error kernels).</br>
+See [Palette Mapping Methods](#palette-mapping-methods) for available color mapping methods from input image pixel colors to palette colors.</br>
+See [Palettes](#palettes) for available palettes to map to.
+
+### Ordered Dithering
+Images can be dithered using a threshold matrix with the `-d, --ordered` command</br>
+`dither -i INPUT_FILE_PATH -o OUTPUT_FILE_PATH -d THRESHOLD_MATRIX,MAPPING_METHOD,PALETTE`</br>
+The input file and output files must be .png.</br>
+See [Ordered Threshold Matrixes](#ordered-threshold-matrixes) for available threshold matrixes.</br>
+See [Palette Mapping Methods](#palette-mapping-methods) for available color mapping methods from input image pixel colors to palette colors.</br>
+See [Palettes](#palettes) for available palettes to map to.
+
+### Temporal Dithering
+Images can be dithered in the time dimension with the `-t, --temporal` command</br>
+`dither -i INPUT_FILE_PATH -t TEMPORAL_METHOD,TEMPORAL_FRAMES,MAPPING_METHOD,PALETTE`</br>
+The input file must be .png. The output file may be .gif or .png.</br>
+If the output file is a .gif, then the output will be a gif with `TEMPORAL_FRAMES` frames.</br>
+If the output file is a .png, then the output will be a png with `TEMPORAL_FRAMES` frames arranged vertically.</br>
+See [Temporal Dithering Methods](#temporal-dithering-methods) for available threshold matrixes</br>
+See [Palette Mapping Methods](#palette-mapping-methods) for available color mapping methods from input image pixel colors to palette colors.</br>
+See [Palettes](#palettes) for available palettes to map to.
+
 ### Grayscale Channel Weights
 Options when using the `-g, --grayscale` flag. Each pixel in the input image will be converted to grayscale according to the weights specified by the option.
 | GRAYSCALE_WEIGHTS | Description |
@@ -104,19 +148,36 @@ Mapping method options when using the `-r, --reduce`, `-e, --error_diffusion`, `
 | `UNIFORM_HISTOGRAM` | Maps each pixel such that the output image contains approximately equal amount of each color in the specified palette. Note that the resulting image may not have a uniform distribution of palette colors, but will likely have a more uniform distribution than if choosing a distance-based method. Not valid when using `-t` flag. |
 
 ### Palettes
-Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. 
+Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. The following palettes are built in and can be referenced by name.
 | PALETTE | Description |
 | :-- | :-- |
 | 1BIT_MONITOR_GLOW | [lospec](https://lospec.com/palette-list/1bit-monitor-glow) |
+| NOIRE_TRUTH | [lospec](https://lospec.com/palette-list/noire-truth) |
 | TITANSTONE | [lospec](https://lospec.com/palette-list/titanstone) |
 | ICE_CREAM_GB | [lospec](https://lospec.com/palette-list/ice-cream-gb) |
+| MIST_GB | [lospec](https://lospec.com/palette-list/mist-gb) |
+| CRIMSON | [lospec](https://lospec.com/palette-list/crimson) |
+| FIERY_PLAGUE_GB | [lospec](https://lospec.com/palette-list/fiery-plague-gb) |
 | TWILIGHT5 | [lospec](https://lospec.com/palette-list/twilight-5) |
 | OIL6 | [lospec](https://lospec.com/palette-list/oil-6) |
 | MIDNIGHT_ABLAZE | [lospec](https://lospec.com/palette-list/midnight-ablaze) |
 | SLSO8 | [lospec](https://lospec.com/palette-list/slso8) |
 
-## Examples
+Alternatively, specify a file path containing a .csv file in the format</br>
+`NAME,AUTHOR,COLOR1,COLOR2,...`</br>
+where `COLORX` is a hexadecimal color code with no additional prefixes. This format exactly matches the Lospec API, so any palette csv can be obtained by appending ".csv" to the URL of a lospec palette. See examples in the [palettes](./data/palettes/) folder.
 
+## Examples
+The below examples are executed from the root directory. `dither` can be used instead of `.\bin\dither.exe` if the executable is added to your path. Input and output directories are shown relative to the root directory, but absolute paths can be used as well.</br>
+`.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_grayscale_bt709.png -g BT709`</br>
+`.\bin\dither.exe -i .\input\boat.png -o .\output\boat_reduce_twilight5.png -r MANHATTAN_DISTANCE,TWILIGHT5`</br>
+`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_convolve_unsharp_mask.png -c UNSHARP_MASK`</br>
+`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_.png -e ATKINSON,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
+`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_midnight_blaze.png -e ATKINSON,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
+`.\bin\dither.exe -i .\input\peppers.png -o .\output\peppers_ordered_blue_noise_64x64_cherrymelon.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,.\data\palettes\cherrymelon.csv`</br>
+`.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_ordered_bayer_16x16_witching-hour.png -d BAYER_16X16,EUCLIDEAN_DISTANCE,.\data\palettes\witching-hour.csv -a`</br>
+`.\bin\dither.exe -i .\input\tulips.png -o .\output\tulips_temporal_pwm_slso8.gif -t PWM,8,EUCLIDEAN_DISTANCE,SLSO8 -a`</br>
+`.\bin\dither.exe -i .\input\tulips.png -o .\output\tulips_temporal_pwm_noire_truth.png -t PWM,4,EUCLIDEAN_DISTANCE,NOIRE_TRUTH -a`</br>
 
 ## To Compile
 Requirements: GNU C++ compiler, make<br/>
@@ -125,6 +186,10 @@ Open a terminal in the root directory and enter the command
 > make
 ```
 
+## Why Use Dither Instead of ImageMagick?
+
+
 ## Libraries
-[LodePNG](https://lodev.org/lodepng/) - provides png encoding/decoding functions
+[Noise2D](https://github.com/johnconwell/noise2d) - used to generate threshold matrixes for ordered dithering</br>
+[LodePNG](https://lodev.org/lodepng/) - provides png encoding/decoding functions</br>
 [gif-h](https://github.com/charlietangora/gif-h) - provides gif writing functions

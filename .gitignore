@@ -1,6 +1,4 @@
 .vscode/
-*.png
-*.gif
 *.exe
 *.o
 *.bat

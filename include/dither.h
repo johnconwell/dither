@@ -20,7 +20,7 @@ public:
     std::size_t load(const char* file_name);
     std::size_t save(const char* file_name);
 
-    void grayscale(std::string name_grayscale_weights);
+    void grayscale(std::string name_grayscale_weights, bool gamma_correction);
     void convolve(std::string name_kernel);
     void reduce(std::string name_mapping_method, std::string name_palette, bool gamma_correction);
     void error_diffusion(std::string name_algorithm, std::string name_mapping_method, std::string name_palette, bool gamma_correction);

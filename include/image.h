@@ -23,7 +23,7 @@ public:
     double get_gamma();
     std::size_t get_frames();
     void set_frames(std::size_t new_frames);
-    std::vector<Color> get_color_range();
+    std::vector<Color> get_color_range(bool gamma_correction);
 
     std::size_t load(const char* file_name);
     std::size_t save(const char* file_name);

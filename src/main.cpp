@@ -24,7 +24,7 @@ int main(int argc, const char* argv[])
 
     if(cli.grayscale)
     {
-        dither.grayscale(cli.grayscale_weights);
+        dither.grayscale(cli.grayscale_weights, cli.gamma_correction);
     }
 
     if(cli.convolve)

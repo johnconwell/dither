@@ -102,7 +102,7 @@ void Image::set_frames(std::size_t new_frames)
     return;
 }
 
-std::vector<Color> Image::get_color_range()
+std::vector<Color> Image::get_color_range(bool gamma_correction)
 {
     std::vector<Color> color_range = {
         Color(Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX),
@@ -115,7 +115,12 @@ std::vector<Color> Image::get_color_range()
     {
         for(std::size_t x = 0; x < width; x++)
         {
-            const Color color = get_pixel(x, y);
+            Color color = get_pixel(x, y);
+
+            if(gamma_correction)
+            {
+                color.to_linear(gamma);
+            }
 
             if(color.r < color_range[INDEX_COLOR_MIN].r)
             {

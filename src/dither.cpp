@@ -16,7 +16,7 @@ std::size_t Dither::save(const char* file_name)
     return image.save(file_name);
 }
 
-void Dither::grayscale(std::string name_grayscale_weights)
+void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction)
 {
     const Grayscale grayscale = Grayscale(name_grayscale_weights);
     const std::size_t height = image.get_height();
@@ -27,6 +27,12 @@ void Dither::grayscale(std::string name_grayscale_weights)
         for(std::size_t x = 0; x < width; x++)
         {
             Color color = image.get_pixel(x, y);
+
+            if(gamma_correction)
+            {
+                color.to_linear(image.get_gamma());
+            }
+
             color.to_grayscale(grayscale.weights);
             image.set_pixel(color, x, y);
         }
@@ -133,7 +139,7 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
 
     if(name_mapping_method == "UNIFORM_HISTOGRAM")
     {
-        color_range_image = image.get_color_range();
+        color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
         slope = {
             static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
@@ -147,9 +153,13 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
         for(std::size_t x = 0; x < image_width; x++)
         {
             Color color = image.get_pixel(x, y);
-            Color palette_nearest;
 
-            palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
+            if(gamma_correction)
+            {
+                color.to_linear(image.get_gamma());
+            }
+
+            Color palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
 
             image.set_pixel(palette_nearest, x, y);
         }
@@ -173,7 +183,7 @@ void Dither::error_diffusion(std::string name_algorithm, std::string name_mappin
 
     if(name_mapping_method == "UNIFORM_HISTOGRAM")
     {
-        color_range_image = image.get_color_range();
+        color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
         slope = {
             static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
@@ -247,7 +257,7 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
 
     if(name_mapping_method == "UNIFORM_HISTOGRAM")
     {
-        color_range_image = image.get_color_range();
+        color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
         slope = {
             static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
