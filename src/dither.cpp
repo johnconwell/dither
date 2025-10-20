@@ -168,7 +168,7 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
     return;
 }
 
-void Dither::error_diffusion(std::string name_algorithm, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
+void Dither::error_diffusion(std::string name_algorithm, std::string scan_pattern, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
 {
     ErrorDiffusion error_diffusion = ErrorDiffusion(name_algorithm);
     Palette palette = Palette(name_palette);
@@ -194,42 +194,94 @@ void Dither::error_diffusion(std::string name_algorithm, std::string name_mappin
 
     for(std::size_t y = 0; y < image_height; y++)
     {
-        for(std::size_t x = 0; x < image_width; x++)
+        // alternate direction on odd rows
+        if(scan_pattern == "SERPENTINE" && y % 2 == 1)
         {
-            // set current pixel to nearest palette color (accounting for accumulated error)
-            Color color = image.get_pixel(x, y);
-
-            if(gamma_correction)
+            for(int x = image_width - 1; x >= 0; x--)
             {
-                color.to_linear(image.get_gamma());
-            }
-            
-            color.r += error_matrix[y][x][Color::INDEX_R];
-            color.g += error_matrix[y][x][Color::INDEX_G];
-            color.b += error_matrix[y][x][Color::INDEX_B];
+                // set current pixel to nearest palette color (accounting for accumulated error)
+                Color color = image.get_pixel(x, y);
 
-            Color palette_nearest;
-
-            palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
-
-            const std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
-
-            for(std::size_t index_error = 0; index_error < error_diffusion.coordinates.size(); index_error++)
-            {
-                const std::size_t new_x = x + error_diffusion.coordinates[index_error].first;
-                const std::size_t new_y = y + error_diffusion.coordinates[index_error].second;
-
-                if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
+                if(gamma_correction)
                 {
-                    continue;
+                    color.to_linear(image.get_gamma());
+                }
+                
+                color.r += error_matrix[y][x][Color::INDEX_R];
+                color.g += error_matrix[y][x][Color::INDEX_G];
+                color.b += error_matrix[y][x][Color::INDEX_B];
+
+                color.r = std::clamp(color.r, 0, static_cast<int>(Color::CHANNEL_MAX));
+                color.g = std::clamp(color.g, 0, static_cast<int>(Color::CHANNEL_MAX));
+                color.b = std::clamp(color.b, 0, static_cast<int>(Color::CHANNEL_MAX));
+
+                Color palette_nearest;
+
+                palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
+
+                const std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
+
+                for(std::size_t index_error = 0; index_error < error_diffusion.coordinates.size(); index_error++)
+                {
+                    const std::size_t new_x = x - error_diffusion.coordinates[index_error].first; // flip x when we are going backwards
+                    const std::size_t new_y = y + error_diffusion.coordinates[index_error].second;
+
+                    if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
+                    {
+                        continue;
+                    }
+
+                    error_matrix[new_y][new_x][Color::INDEX_R] += static_cast<int>(current_pixel_error[Color::INDEX_R] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                    error_matrix[new_y][new_x][Color::INDEX_G] += static_cast<int>(current_pixel_error[Color::INDEX_G] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                    error_matrix[new_y][new_x][Color::INDEX_B] += static_cast<int>(current_pixel_error[Color::INDEX_B] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
                 }
 
-                error_matrix[new_y][new_x][Color::INDEX_R] += static_cast<int>(current_pixel_error[Color::INDEX_R] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                error_matrix[new_y][new_x][Color::INDEX_G] += static_cast<int>(current_pixel_error[Color::INDEX_G] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                error_matrix[new_y][new_x][Color::INDEX_B] += static_cast<int>(current_pixel_error[Color::INDEX_B] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                image.set_pixel(palette_nearest, x, y);
             }
+        }
+        else
+        {
+            for(std::size_t x = 0; x < image_width; x++)
+            {
+                // set current pixel to nearest palette color (accounting for accumulated error)
+                Color color = image.get_pixel(x, y);
 
-            image.set_pixel(palette_nearest, x, y);
+                if(gamma_correction)
+                {
+                    color.to_linear(image.get_gamma());
+                }
+                
+                color.r += error_matrix[y][x][Color::INDEX_R];
+                color.g += error_matrix[y][x][Color::INDEX_G];
+                color.b += error_matrix[y][x][Color::INDEX_B];
+
+                color.r = std::clamp(color.r, 0, static_cast<int>(Color::CHANNEL_MAX));
+                color.g = std::clamp(color.g, 0, static_cast<int>(Color::CHANNEL_MAX));
+                color.b = std::clamp(color.b, 0, static_cast<int>(Color::CHANNEL_MAX));
+
+                Color palette_nearest;
+
+                palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
+
+                const std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
+
+                for(std::size_t index_error = 0; index_error < error_diffusion.coordinates.size(); index_error++)
+                {
+                    const std::size_t new_x = x + error_diffusion.coordinates[index_error].first;
+                    const std::size_t new_y = y + error_diffusion.coordinates[index_error].second;
+
+                    if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
+                    {
+                        continue;
+                    }
+
+                    error_matrix[new_y][new_x][Color::INDEX_R] += static_cast<int>(current_pixel_error[Color::INDEX_R] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                    error_matrix[new_y][new_x][Color::INDEX_G] += static_cast<int>(current_pixel_error[Color::INDEX_G] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                    error_matrix[new_y][new_x][Color::INDEX_B] += static_cast<int>(current_pixel_error[Color::INDEX_B] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                }
+
+                image.set_pixel(palette_nearest, x, y);
+            }
         }
     }
 

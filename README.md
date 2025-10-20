@@ -16,9 +16,9 @@ Use the `dither` command followed by the input and output flags and any number o
 | `-g, --grayscale <GRAYSCALE_WEIGHTS>` | Converts the input image to grayscale using the specified channel weights | Optional |
 | `-c, --convolve <KERNEL>` | Convolves the input image using the specified kernel | Optional |
 | `-r, --reduce <MAPPING_METHOD>,<PALETTE>` | Reduces the image to the specified palette without applying dithering | Optional |
-| `-e, --error_diffusion <ALGORITHM>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image using the specified error diffusion algorithm and color mapping method | Optional |
+| `-e, --error_diffusion <ALGORITHM>,<SCAN_PATTERN>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image using the specified error diffusion algorithm and color mapping method | Optional |
 | `-d, --ordered <THRESHOLD_MATRIX>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image using the specified threshold matrix and color mapping method | Optional |
-| `t, --temporal <TEMPORAL_METHOD>,<TEMPORAL_FRAMES>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image temporally using the specified temporal dithering method, color mapping method, and number of frames. Output can be saved to .gif or .png | Optional |
+| `-t, --temporal <TEMPORAL_METHOD>,<TEMPORAL_FRAMES>,<MAPPING_METHOD>,<PALETTE>` | Dithers the image temporally using the specified temporal dithering method, color mapping method, and number of frames. Output can be saved to .gif or .png | Optional |
 | `-b, --benchmark` | Displays benchmark information to stdout | Optional |
 
 ### Grayscale
@@ -104,6 +104,13 @@ Algorithm options when using the `-e, --error_diffusion` flag. The input image w
 | `SIERRA_TWO_ROW` | {0, 0, X, 4, 3}<br/>{1, 2, 3, 2, 1}<br/>(1 / 16) |
 | `SIERRA_LITE` | {0, X, 2}<br/>{1, 1, 0}<br/>(1 / 4) |
 
+### Error Diffusion Scan Patterns
+Scan Pattern options when using the `-e, --error_diffusion` flag. The scan pattern determines the order in which pixels are processed or quantized in the image.
+| SCAN_PATTERN | Description |
+| :-- | :-- |
+| `RASTER` | Pixels will be quantized from left to right, starting at the top row and working down |
+| `SERPENTINE` | Pixels will be quantized from left to right on odd rows and right to left on even rows, starting at the top row and working down |
+
 ### Ordered Threshold Matrixes
 Threshold matrix (or "map") options when using the `-d, --ordered` flag. The input image will be quantized against the threshold map specified by the option.<br/>
 [Bayer](https://en.wikipedia.org/wiki/Ordered_dithering#Threshold_map) pattern threshold matrixes produce even results but leave noticable patterns in the output image. Bayer matrixes larger than 8x8 are unlikely to produce better results, since an 8x8 bayer matrix contains every possible value (0-255) of an sRGB encoded image.<br/>
@@ -172,8 +179,8 @@ The below examples are executed from the root directory. `dither` can be used in
 `.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_grayscale_bt709.png -g BT709`</br>
 `.\bin\dither.exe -i .\input\boat.png -o .\output\boat_reduce_twilight5.png -r MANHATTAN_DISTANCE,TWILIGHT5`</br>
 `.\bin\dither.exe -i .\input\lena.png -o .\output\lena_convolve_unsharp_mask.png -c UNSHARP_MASK`</br>
-`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_.png -e ATKINSON,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
-`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_midnight_blaze.png -e ATKINSON,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
+`.\bin\dither.exe -i .\input\earth.png -o .\output\earth_error_diffusion_jarvice-judice-ninke_raster_twilight5.png -e JARVICE_JUDICE_NINKE,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5`</br>
+`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_serpentine_midnight_ablaze.png -e ATKINSON,SERPENTINE,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
 `.\bin\dither.exe -i .\input\peppers.png -o .\output\peppers_ordered_blue_noise_64x64_cherrymelon.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,.\data\palettes\cherrymelon.csv`</br>
 `.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_ordered_bayer_16x16_witching-hour.png -d BAYER_16X16,EUCLIDEAN_DISTANCE,.\data\palettes\witching-hour.csv -a`</br>
 `.\bin\dither.exe -i .\input\tulips.png -o .\output\tulips_temporal_pwm_slso8.gif -t PWM,8,EUCLIDEAN_DISTANCE,SLSO8 -a`</br>

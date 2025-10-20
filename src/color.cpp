@@ -54,9 +54,9 @@ Color Color::add(const Color& other) const
     return Color(this->r + other.r, this->g + other.g, this->b + other.b, std::max(this->a, other.a));
 }
 
-int Color::distance_euclidean_squared(Color other)
+int Color::distance_euclidean_squared(Color other, std::vector<double> channel_weights)
 {
-    return ((other.r - this->r) * (other.r - this->r)) + ((other.g - this->g) * (other.g - this->g)) + ((other.b - this->b) * (other.b - this->b));
+    return (channel_weights[INDEX_R] * (other.r - this->r) * (other.r - this->r)) + (channel_weights[INDEX_G] * (other.g - this->g) * (other.g - this->g)) + (channel_weights[INDEX_B] * (other.b - this->b) * (other.b - this->b));
 }
 
 double Color::distance_euclidean(Color other)

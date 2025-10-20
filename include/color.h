@@ -31,7 +31,7 @@ public:
     bool equals(const Color& other) const;
     Color add(const Color& other) const;
 
-    int distance_euclidean_squared(Color other);
+    int distance_euclidean_squared(Color other, std::vector<double> channel_weights = {0.2126, 0.7152, 0.0722});
     double distance_euclidean(Color other);
     int distance_manhattan(Color other);
 

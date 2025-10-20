@@ -23,7 +23,7 @@ public:
     void grayscale(std::string name_grayscale_weights, bool gamma_correction);
     void convolve(std::string name_kernel);
     void reduce(std::string name_mapping_method, std::string name_palette, bool gamma_correction);
-    void error_diffusion(std::string name_algorithm, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
+    void error_diffusion(std::string name_algorithm, std::string scan_pattern, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
     void ordered(std::string name_threshold_matrix, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
     void temporal(std::string name_temporal_method, std::size_t frames, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
 

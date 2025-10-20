@@ -41,7 +41,7 @@ bool CLI::parse(int argc, const char* argv[])
             ("g,grayscale", "Applies gamma correction the the input image", cxxopts::value<std::string>(), "<GRAYSCALE_WEIGHTS>")
             ("c,convolve", "Convolves the input image using the specified kernel", cxxopts::value<std::string>(), "<KERNEL>")
             ("r,reduce", "Reduces the image to the specified palette without applying dithering", cxxopts::value<std::vector<std::string>>(), "<MAPPING_METHOD>,<PALETTE>")
-            ("e,error_diffusion", "Dithers the image using the specified error diffusion algorithm and color mapping method", cxxopts::value<std::vector<std::string>>(), "<ERROR_DIFFUSION_ALGORITHM>,<MAPPING_METHOD>,<PALETTE>")
+            ("e,error_diffusion", "Dithers the image using the specified error diffusion algorithm and color mapping method", cxxopts::value<std::vector<std::string>>(), "<ERROR_DIFFUSION_ALGORITHM>,<SCAN_PATTERN>,<MAPPING_METHOD>,<PALETTE>")
             ("d,ordered", "Dithers the image using the specified threshold matrix and color mapping method", cxxopts::value<std::vector<std::string>>(), "<ORDERED_THRESHOLD_MATRIX>,<MAPPING_METHOD>,<PALETTE>")
             ("t,temporal", "Dithers the image over time using the specified temporal dithering method and color mapping method", cxxopts::value<std::vector<std::string>>(), "<TEMPORAL_METHOD>,<TEMPORAL_FRAMES>,<MAPPING_METHOD>,<PALETTE>")
             ("b,benchmark", "Displays benchmark information to stdout")
@@ -112,16 +112,17 @@ bool CLI::parse(int argc, const char* argv[])
         {
             std::size_t num_args = result["error_diffusion"].as<std::vector<std::string>>().size();
 
-            if(num_args != 3)
+            if(num_args != 4)
             {
-                std::cerr << "Error: Incorrect number of arguments for --error_diffusion flag. Expected 3, received " << num_args << "." << std::endl;
+                std::cerr << "Error: Incorrect number of arguments for --error_diffusion flag. Expected 4, received " << num_args << "." << std::endl;
                 return false;
             }
 
             error_diffusion = true;
             error_diffusion_algorithm = result["error_diffusion"].as<std::vector<std::string>>()[0];
-            mapping_method = result["error_diffusion"].as<std::vector<std::string>>()[1];
-            palette = result["error_diffusion"].as<std::vector<std::string>>()[2];
+            error_diffusion_scan_pattern = result["error_diffusion"].as<std::vector<std::string>>()[1];
+            mapping_method = result["error_diffusion"].as<std::vector<std::string>>()[2];
+            palette = result["error_diffusion"].as<std::vector<std::string>>()[3];
         }
 
         if(result.count("ordered"))
@@ -191,6 +192,7 @@ std::string CLI::to_string()
     output += "error_diffusion: ";
     output += error_diffusion ? "true\n" : "false\n";
     output += "error_diffusion_algorithm: " + error_diffusion_algorithm + "\n";
+    output += "error_diffusion_scan_pattern: " + error_diffusion_scan_pattern + "\n";
     output += "ordered: ";
     output += ordered ? "true\n" : "false\n";
     output += "ordered_threshold_matrix: " + ordered_threshold_matrix + "\n";

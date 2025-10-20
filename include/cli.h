@@ -23,6 +23,7 @@ public:
     bool reduce;
     bool error_diffusion;
     std::string error_diffusion_algorithm;
+    std::string error_diffusion_scan_pattern;
     bool ordered;
     std::string ordered_threshold_matrix;
     bool temporal;

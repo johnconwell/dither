@@ -39,7 +39,7 @@ int main(int argc, const char* argv[])
 
     if(cli.error_diffusion)
     {
-        dither.error_diffusion(cli.error_diffusion_algorithm, cli.mapping_method, cli.palette, cli.gamma_correction);
+        dither.error_diffusion(cli.error_diffusion_algorithm, cli.error_diffusion_scan_pattern, cli.mapping_method, cli.palette, cli.gamma_correction);
     }
 
     if(cli.ordered)
