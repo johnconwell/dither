@@ -68,7 +68,7 @@ See [Palettes](#palettes) for available palettes to map to.
 ### Grayscale Channel Weights
 Options when using the `-g, --grayscale` flag. Each pixel in the input image will be converted to grayscale according to the weights specified by the option. In addition to the built-in grayscale weights below, the user can specify a csv file in the format:</br>
 `R_CHANNEL_WEIGHT,G_CHANNEL_WEIGHT,B_CHANNEL_WEIGHT`</br>
-Each channel weight should be a floating point number between 0.0 and 1.0, and the three channel weights should sum to 1.0. Values outside this range or that sum to a different value are possible but may result in pixel luminosity clipping at the minimum and maximum values or the overall luminosity of the image changing. Examples are shown in the [grayscale_weights](.\data\grayscale_weights) folder.
+Each channel weight should be a floating point number between 0.0 and 1.0, and the three channel weights should sum to 1.0. Values outside this range or that sum to a different value are possible but may result in pixel luminosity clipping at the minimum and maximum values or the overall luminosity of the image changing. Examples are shown in the [grayscale_weights](data/grayscale_weights) folder.
 | GRAYSCALE_WEIGHTS | Description |
 | :-- | :-- |
 | `STANDARD` | R: 0.3334<br/>G: 0.3333<br/>B: 0.3333 |
@@ -86,7 +86,7 @@ Options when using the `-c, --convolve` flag. The input image will be convolved 
 `X21,X22,...,X2N`</br>
 `...,...,...,...`</br>
 `XM1,XM2,...,XMN`</br>
-Each element in the kernel must be a floating point number. Examples are shown in the [convolution_kernels](.\data\convolution_kernels) folder.
+Each element in the kernel must be a floating point number. Examples are shown in the [convolution_kernels](data/convolution_kernels) folder.
 | KERNEL | Description |
 | :-- | :-- |
 | `RIDGE_4` | { 0,-1, 0}<br/>{-1, 4,-1}<br/>{ 0,-1, 0} |
@@ -128,7 +128,7 @@ In addition to the built-in convolution kernels below, the user can specify a th
 `X21,X22,...,X2N`</br>
 `...,...,...,...`</br>
 `XM1,XM2,...,XMN`</br>
-Each element in the threshold matrix must be an integer with a value between 0 and 255, inclusive. Examples are shown in the [threshold_matrixes](.\data\threshold_matrixes) folder.
+Each element in the threshold matrix must be an integer with a value between 0 and 255, inclusive. Examples are shown in the [threshold_matrixes](data/threshold_matrixes) folder.
 | THRESHOLD_MATRIX | Description |
 | :-- | :-- |
 | `BAYER_2X2` | 2x2 Bayer pattern threshold matrix |
