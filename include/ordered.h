@@ -1109,14 +1109,75 @@ public:
 
     Ordered(std::string name)
     {
-        if(!THRESHOLD_MATRIXES.contains(name))
+        if(THRESHOLD_MATRIXES.contains(name))
         {
-            std::cerr << "Error: invalid threshold matrix - " << name << std::endl;
-            std::exit(EXIT_FAILURE);
+            this->name = name;
+            this->threshold_matrix = THRESHOLD_MATRIXES.at(name);
         }
+        else
+        {
+            std::ifstream file;
+            file.open(name);
 
-        this->name = name;
-        this->threshold_matrix = THRESHOLD_MATRIXES.at(name);
+            if(!file.is_open() || std::filesystem::is_empty(name))
+            {
+                std::cerr << "Error: invalid threshold matrix - " << name << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+
+            std::streamoff count = std::count_if(std::istreambuf_iterator<char>{file}, {}, [](char c) { return c == '\n'; });
+            file.seekg(-1, std::ios::end);
+
+            if(file.peek() != '\n')
+            {
+                count++;
+            }
+
+            file.seekg(0, std::ios::beg);
+            
+            std::vector<std::vector<std::string>> tokens;
+            tokens.resize(count);
+            std::string token;
+
+            for(int index_line = 0; index_line < count; index_line++)
+            {
+                std::string line;
+                std::getline(file, line, '\n');
+                std::stringstream ss(line);
+
+                while(std::getline(ss, token, ','))
+                {
+                    tokens[index_line].push_back(token);
+                }
+
+                if(tokens[index_line].size() != tokens[0].size())
+                {
+                    std::cerr << "Error: threshold matrix width is not consistent across rows: elements in row 1 = " <<  tokens[0].size() << ", elements in row " << (index_line + 1) << " = " << tokens[index_line].size() << std::endl;
+                    std::exit(EXIT_FAILURE);
+                }
+            }
+
+            this->name = name;
+            this->threshold_matrix.resize(count);
+
+            for(std::size_t y = 0; y < static_cast<std::size_t>(count); y++)
+            {
+                threshold_matrix[y].resize(tokens[y].size());
+                
+                for(std::size_t x = 0; x < threshold_matrix[y].size(); x++)
+                {
+                    try
+                    {
+                        this->threshold_matrix[y][x] = std::stoi(tokens[y][x]);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        std::cerr << "Error: invalid threshold matrix value found in " << name << " - " << tokens[y][x] << std::endl;
+                        std::exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
 
         return;
     }

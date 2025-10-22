@@ -34,6 +34,12 @@ void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction
             }
 
             color.to_grayscale(grayscale.weights);
+
+            if(gamma_correction)
+            {
+                color.to_srgb(image.get_gamma());
+            }
+
             image.set_pixel(color, x, y);
         }
     }

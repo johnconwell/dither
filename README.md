@@ -66,7 +66,9 @@ See [Palette Mapping Methods](#palette-mapping-methods) for available color mapp
 See [Palettes](#palettes) for available palettes to map to.
 
 ### Grayscale Channel Weights
-Options when using the `-g, --grayscale` flag. Each pixel in the input image will be converted to grayscale according to the weights specified by the option.
+Options when using the `-g, --grayscale` flag. Each pixel in the input image will be converted to grayscale according to the weights specified by the option. In addition to the built-in grayscale weights below, the user can specify a csv file in the format:</br>
+`R_CHANNEL_WEIGHT,G_CHANNEL_WEIGHT,B_CHANNEL_WEIGHT`</br>
+Each channel weight should be a floating point number between 0.0 and 1.0, and the three channel weights should sum to 1.0. Values outside this range or that sum to a different value are possible but may result in pixel luminosity clipping at the minimum and maximum values or the overall luminosity of the image changing. Examples are shown in the [grayscale_weights](.\data\grayscale_weights) folder.
 | GRAYSCALE_WEIGHTS | Description |
 | :-- | :-- |
 | `STANDARD` | R: 0.3334<br/>G: 0.3333<br/>B: 0.3333 |
@@ -79,7 +81,12 @@ Options when using the `-g, --grayscale` flag. Each pixel in the input image wil
 | `CHANNEL_GB` | R: 0.0<br/>G: 0.5<br/>B: 0.5 |
 
 ### Convolution Kernels
-Options when using the `-c, --convolve` flag. The input image will be convolved against the kernel specified by the option.
+Options when using the `-c, --convolve` flag. The input image will be convolved against the kernel specified by the option. In addition to the built-in convolution kernels below, the user can specify a kernel of size (M x N) in a csv file in the format:</br>
+`X11,X12,...,X1N`</br>
+`X21,X22,...,X2N`</br>
+`...,...,...,...`</br>
+`XM1,XM2,...,XMN`</br>
+Each element in the kernel must be a floating point number. Examples are shown in the [convolution_kernels](.\data\convolution_kernels) folder.
 | KERNEL | Description |
 | :-- | :-- |
 | `RIDGE_4` | { 0,-1, 0}<br/>{-1, 4,-1}<br/>{ 0,-1, 0} |
@@ -109,13 +116,19 @@ Scan Pattern options when using the `-e, --error_diffusion` flag. The scan patte
 | SCAN_PATTERN | Description |
 | :-- | :-- |
 | `RASTER` | Pixels will be quantized from left to right, starting at the top row and working down |
-| `SERPENTINE` | Pixels will be quantized from left to right on odd rows and right to left on even rows, starting at the top row and working down |
+| `SERPENTINE` | Pixels will be quantized from left to right on even rows and right to left on odd rows, starting at the top row (row 0) and working down |
 
 ### Ordered Threshold Matrixes
 Threshold matrix (or "map") options when using the `-d, --ordered` flag. The input image will be quantized against the threshold map specified by the option.<br/>
 [Bayer](https://en.wikipedia.org/wiki/Ordered_dithering#Threshold_map) pattern threshold matrixes produce even results but leave noticable patterns in the output image. Bayer matrixes larger than 8x8 are unlikely to produce better results, since an 8x8 bayer matrix contains every possible value (0-255) of an sRGB encoded image.<br/>
 [Blue Noise](https://github.com/johnconwell/noise2d) threshold matrixes contain only high-frequency noise, producing even results with few noticalbe patterns, especially when using larger threshold matrixes.<br/>
-[White Noise](https://en.wikipedia.org/wiki/White_noise) threshold matrixes produce uneven results and leave noticable patterns in the output image. They are included for comparison.
+[White Noise](https://en.wikipedia.org/wiki/White_noise) threshold matrixes produce uneven results and leave noticable patterns in the output image. They are included for comparison.</br>
+In addition to the built-in convolution kernels below, the user can specify a threshold matrix of size (M x N) in a csv file in the format:</br>
+`X11,X12,...,X1N`</br>
+`X21,X22,...,X2N`</br>
+`...,...,...,...`</br>
+`XM1,XM2,...,XMN`</br>
+Each element in the threshold matrix must be an integer with a value between 0 and 255, inclusive. Examples are shown in the [threshold_matrixes](.\data\threshold_matrixes) folder.
 | THRESHOLD_MATRIX | Description |
 | :-- | :-- |
 | `BAYER_2X2` | 2x2 Bayer pattern threshold matrix |
@@ -155,7 +168,9 @@ Mapping method options when using the `-r, --reduce`, `-e, --error_diffusion`, `
 | `UNIFORM_HISTOGRAM` | Maps each pixel such that the output image contains approximately equal amount of each color in the specified palette. Note that the resulting image may not have a uniform distribution of palette colors, but will likely have a more uniform distribution than if choosing a distance-based method. Not valid when using `-t` flag. |
 
 ### Palettes
-Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. The following palettes are built in and can be referenced by name.
+Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. The following palettes are built in and can be referenced by name. In addition to the built-in palettes below, the user can specify a palette in a csv file in the format:</br>
+`NAME,AUTHOR,COLOR1,COLOR2,...`</br>
+where `COLORX` is a hexadecimal color code. This format exactly matches the Lospec API, so any Lospec palette csv can be downloaded by appending ".csv" to the URL of a lospec palette. See examples in the [palettes](./data/palettes/) folder.
 | PALETTE | Description |
 | :-- | :-- |
 | 1BIT_MONITOR_GLOW | [lospec](https://lospec.com/palette-list/1bit-monitor-glow) |
@@ -169,10 +184,6 @@ Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --o
 | OIL6 | [lospec](https://lospec.com/palette-list/oil-6) |
 | MIDNIGHT_ABLAZE | [lospec](https://lospec.com/palette-list/midnight-ablaze) |
 | SLSO8 | [lospec](https://lospec.com/palette-list/slso8) |
-
-Alternatively, specify a file path containing a .csv file in the format</br>
-`NAME,AUTHOR,COLOR1,COLOR2,...`</br>
-where `COLORX` is a hexadecimal color code with no additional prefixes. This format exactly matches the Lospec API, so any palette csv can be obtained by appending ".csv" to the URL of a lospec palette. See examples in the [palettes](./data/palettes/) folder.
 
 ## Examples
 The below examples are executed from the root directory. `dither` can be used instead of `.\bin\dither.exe` if the executable is added to your path. Input and output directories are shown relative to the root directory, but absolute paths can be used as well.</br>

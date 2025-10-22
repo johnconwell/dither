@@ -1,6 +1,7 @@
 #ifndef __COLOR_H
 #define __COLOR_H
 
+#include <algorithm> // std::clamp
 #include <cmath> // sqrt()
 #include <cstdlib> // std::exit
 #include <iomanip> // std::hex
@@ -20,6 +21,7 @@ public:
     static inline constexpr std::size_t INDEX_A = 3;
     static inline constexpr std::size_t CHANNEL_MAX = 255;
     static inline constexpr std::size_t CHANNEL_VALUES = 256;
+    static inline constexpr std::size_t HEX_MAX = 0xffffff;
 
     Color();
     Color(int r, int g, int b, int a = CHANNEL_MAX);

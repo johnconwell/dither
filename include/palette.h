@@ -6,6 +6,7 @@
 #include <cmath> // std::abs()
 #include <cstdlib> // std::exit
 #include <fstream> // std::ifstream
+#include <iostream> // std::cerr, std::endl
 #include <sstream> // std::stringstream
 #include <string> // std::string
 #include <unordered_map> // std::unordered_map

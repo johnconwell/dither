@@ -110,7 +110,8 @@ void Color::to_srgb(double gamma)
 
 void Color::to_grayscale(std::vector<double> grayscale_weights)
 {
-    const double value = grayscale_value(grayscale_weights);
+    double value = grayscale_value(grayscale_weights);
+    value = std::clamp(value, 0.0, static_cast<double>(CHANNEL_MAX));
     r = static_cast<int>(value);
     g = static_cast<int>(value);
     b = static_cast<int>(value);

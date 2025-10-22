@@ -34,7 +34,25 @@ Palette::Palette(std::string name)
 
         for(std::size_t index_tokens = 2; index_tokens < tokens.size(); index_tokens++)
         {
-            colors.push_back(Color(std::stoi(tokens[index_tokens], nullptr, 16)));
+            int hex_value;
+
+            try
+            {
+                hex_value = std::stoi(tokens[index_tokens], nullptr, 16);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << "Error: Invalid palette value - " << tokens[index_tokens] << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+
+            if(hex_value < 0 || hex_value > static_cast<int>(Color::HEX_MAX))
+            {
+                std::cerr << "Error: Palette value is out of color hex code range (0-ffffff) - " << hex_value << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+            
+            colors.push_back(Color(hex_value));
         }
     }
 
