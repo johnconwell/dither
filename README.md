@@ -206,8 +206,10 @@ Open a terminal in the root directory and enter the command
 
 ## Why Use Dither Instead of ImageMagick?
 [ImageMagick](https://imagemagick.org/) is a mature and powerful tool with far more features than Dither. Most of the time, you probably should use ImageMagick. However, Dither has a few features that ImageMagick does not:
-- More grayscale channel weightings, and the ability to specify arbitrary channel weightings through a custom csv file
+- More built-in grayscale channel weightings, and the ability to specify arbitrary channel weightings through a custom csv file
 - Several built-in palettes, plus the ability to specify a palette through a csv file (obtained directly from Lospec) rather than another image
+- Built-in convolution kernels, plus the ability to specify an arbitrarily sized convolution kernel as a csv
+- Nine built-in error diffusion algorithms (ImageMagick has two built-in algorithms)
 - 
 
 
