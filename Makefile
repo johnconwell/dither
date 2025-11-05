@@ -16,11 +16,11 @@ CFLAGS = -I$(IDIR) -L$(LDIR) -Wall -std=c++26
 LIBS = #-llibfftw3-3 -llibfftw3f-3 -llibfftw3l-3 -lm
 
 # list of headers (dependencies) and rule to format them as [INCLUDE_DIR]/[HEADER]
-_DEPS = cli.h color.h dither.h gif.h image.h lodepng.h palette.h
+_DEPS = benchmark.h cli.h color.h dither.h gif.h image.h lodepng.h palette.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
 # list of objects and rule to format them as [OBJECT_DIR]/[OBJECT]
-_OBJ = cli.o color.o dither.o gif.o image.o lodepng.o main.o palette.o
+_OBJ = benchmark.o cli.o color.o dither.o gif.o image.o lodepng.o main.o palette.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 # rule to make each object with corresponding named cpp file and headers as dependencies

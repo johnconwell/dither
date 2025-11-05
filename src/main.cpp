@@ -1,3 +1,4 @@
+#include "benchmark.h"
 #include "cli.h"
 #include "dither.h"
 #include "image.h"
@@ -8,6 +9,7 @@
 int main(int argc, const char* argv[])
 {
     CLI cli = CLI();
+    Benchmark benchmark = Benchmark();
 
     if(!cli.parse(argc, argv))
     {
@@ -20,6 +22,11 @@ int main(int argc, const char* argv[])
     if(error)
     {
         return EXIT_FAILURE;
+    }
+
+    if(cli.benchmark)
+    {
+        benchmark.start();
     }
 
     if(cli.grayscale)
@@ -50,6 +57,25 @@ int main(int argc, const char* argv[])
     if(cli.temporal)
     {
         dither.temporal(cli.temporal_method, std::stoi(cli.temporal_frames), cli.mapping_method, cli.palette, cli.gamma_correction);
+    }
+
+    if(cli.benchmark)
+    {
+        benchmark.stop();
+        std::cout << cli.file_path_output << " processing time: ";
+
+        if(benchmark.time_us() < 10)
+        {
+            std::cout << benchmark.time_ns() << "ns" << std::endl;
+        }
+        else if(benchmark.time_ms() < 10)
+        {
+            std::cout << benchmark.time_us() << "us" << std::endl;
+        }
+        else
+        {
+            std::cout << benchmark.time_ms() << "ms" << std::endl;
+        }
     }
 
     error = dither.save(cli.file_path_output.c_str());
