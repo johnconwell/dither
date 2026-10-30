@@ -1,10 +1,12 @@
 #ifndef __CONVOLVE_H
 #define __CONVOLVE_H
 
+#include <algorithm> // std::count_if
 #include <cstdlib> // std::exit
 #include <filesystem> // std::filesystem::is_empty
 #include <fstream> // std::ifstream
 #include <iostream> // std::cerr, std::endl
+#include <iterator> // std::istreambuf_iterator
 #include <sstream> // std::stringstream
 #include <string> // std::string
 #include <unordered_map> // std::unordered_map

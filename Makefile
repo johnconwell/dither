@@ -1,37 +1,60 @@
 BDIR = ./bin
 IDIR = ./include
-LDIR = ./lib
 ODIR = ./obj
 SDIR = ./src
-OUTDIR = ./output
-# CTNDIR = $(OUTDIR)/convolution
-# CVDDIR = $(OUTDIR)/convolve_dither
-# EDDIR = $(OUTDIR)/error_diffusion
-# ORDDIR = $(OUTDIR)/ordered
-# TMDIR = $(OUTDIR)/threshold_matrix
+TDIR = ./tests
 
 CC = g++
-CFLAGS = -I$(IDIR) -L$(LDIR) -Wall -std=c++26
+WARNINGS = -Wall -Wextra -Wconversion
+CFLAGS = -I$(IDIR) -std=c++23 -O2 $(WARNINGS) -MMD -MP
 
-LIBS = #-llibfftw3-3 -llibfftw3f-3 -llibfftw3l-3 -lm
+# on Windows (MinGW) the linker appends .exe, so the target name must include it
+ifeq ($(OS),Windows_NT)
+    EXE = .exe
+else
+    EXE =
+endif
 
-# list of headers (dependencies) and rule to format them as [INCLUDE_DIR]/[HEADER]
-_DEPS = benchmark.h cli.h color.h dither.h gif.h image.h lodepng.h palette.h
-DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+TARGET = $(BDIR)/dither$(EXE)
+TEST_TARGET = $(BDIR)/test_dither$(EXE)
 
 # list of objects and rule to format them as [OBJECT_DIR]/[OBJECT]
 _OBJ = benchmark.o cli.o color.o dither.o gif.o image.o lodepng.o main.o palette.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
-# rule to make each object with corresponding named cpp file and headers as dependencies
-$(ODIR)/%.o : $(SDIR)/%.cpp $(DEPS)
+# every object except main.o, linked into the test runner
+LIB_OBJ = $(filter-out $(ODIR)/main.o,$(OBJ))
+TEST_OBJ = $(ODIR)/test_main.o
+
+.PHONY : all dither test clean
+
+all : $(TARGET)
+
+# kept so that `make dither` still works
+dither : $(TARGET)
+
+$(TARGET) : $(OBJ)
+	$(CC) -o $@ $^ $(CFLAGS)
+
+# vendored third-party code (lodepng, gif-h): don't report its warnings
+$(ODIR)/lodepng.o $(ODIR)/gif.o : WARNINGS = -w
+
+# rule to make each object from the matching cpp file; header dependencies come from the generated .d files
+$(ODIR)/%.o : $(SDIR)/%.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-# rule to make all objects and build the result as main.exe
-dither : $(OBJ)
-	$(CC) -o $(BDIR)/$@ $^ $(CFLAGS) $(LIBS)
+$(ODIR)/test_main.o : $(TDIR)/test_main.cpp
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-.PHONY : clean
+$(TEST_TARGET) : $(LIB_OBJ) $(TEST_OBJ)
+	$(CC) -o $@ $^ $(CFLAGS)
 
-clean:
-	rm -f $(BDIR)/*.exe $(ODIR)/*.o $(OUTDIR)/*.png $(OUTDIR)/*.gif
+# the CLI tests run the real binary, so build both
+test : $(TARGET) $(TEST_TARGET)
+	$(TEST_TARGET) $(TARGET)
+
+clean :
+	rm -f $(BDIR)/dither $(BDIR)/test_dither $(BDIR)/*.exe $(ODIR)/*.o $(ODIR)/*.d
+	rm -rf $(TDIR)/tmp
+
+-include $(OBJ:.o=.d) $(TEST_OBJ:.o=.d)

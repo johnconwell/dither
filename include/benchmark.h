@@ -1,7 +1,8 @@
 #ifndef __BENCHMARK_H
 #define __BENCHMARK_H
 
-#include <chrono> // clock_t, clock()
+#include <chrono> // std::chrono::steady_clock
+#include <cstddef> // std::size_t
 
 class Benchmark
 {
