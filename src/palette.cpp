@@ -1,21 +1,50 @@
 #include "palette.h"
+#include "error.h"
+#include <algorithm> // std::min
+#include <charconv> // std::from_chars
+#include <cmath> // std::fabs
+#include <fstream> // std::ifstream
+#include <limits> // std::numeric_limits
+#include <sstream> // std::stringstream
+#include <unordered_map> // std::unordered_map
 
-Palette::Palette(std::string name)
+namespace
 {
-    if(PRESET_PALETTES.contains(name))
+    // built once, on first use, and shared
+    const std::unordered_map<std::string, std::vector<Color>>& presets()
+    {
+        static const std::unordered_map<std::string, std::vector<Color>> PRESETS = {
+            {"1BIT_MONITOR_GLOW", {Color(0x222323), Color(0xf0f6f0)}},
+            {"NOIRE_TRUTH", {Color(0x1e1c32), Color(0xc6baac)}},
+            {"TITANSTONE", {Color(0x150413), Color(0x635c6d), Color(0xffffd1)}},
+            {"ICE_CREAM_GB", {Color(0x7c3f58), Color(0xeb6b6f), Color(0xf9a875), Color(0xfff6d3)}},
+            {"MIST_GB", {Color(0x2d1b00), Color(0x1e606e), Color(0x5ab9a8), Color(0xc4f0c2)}},
+            {"CRIMSON", {Color(0x1b0326), Color(0x7a1c4b), Color(0xba5044), Color(0xeff9d6)}},
+            {"FIERY_PLAGUE_GB", {Color(0x1a2129), Color(0x312137), Color(0x512839), Color(0x713141)}},
+            {"TWILIGHT5", {Color(0x292831), Color(0x333f58), Color(0x4a7a96), Color(0xee8695), Color(0xfbbbad)}},
+            {"OIL6", {Color(0x272744), Color(0x494d7e), Color(0x8b6d9c), Color(0xc69fa5), Color(0xf2d3ab), Color(0xfbf5ef)}},
+            {"MIDNIGHT_ABLAZE", {Color(0x130208), Color(0x1f0510), Color(0x31051e), Color(0x460e2b), Color(0x7c183c), Color(0xd53c6a), Color(0xff8274)}},
+            {"SLSO8", {Color(0x0d2b45), Color(0x203c56), Color(0x544e68), Color(0x8d697a), Color(0xd08159), Color(0xffaa5e), Color(0xffd4a3), Color(0xffecd6)}},
+        };
+
+        return PRESETS;
+    }
+}
+
+Palette::Palette(const std::string& name)
+{
+    if(const auto it = presets().find(name); it != presets().end())
     {
         this->name = name;
-        this->colors = PRESET_PALETTES.at(name);
+        this->colors = it->second;
     }
     else
     {
-        std::ifstream file;
-        file.open(name);
-        
+        std::ifstream file(name);
+
         if(!file.is_open())
         {
-            std::cerr << "Error: Invalid palette argument - " << name << std::endl;
-            std::exit(EXIT_FAILURE);
+            throw DitherError("Invalid palette argument - " + name);
         }
 
         std::string line;
@@ -23,65 +52,111 @@ Palette::Palette(std::string name)
         std::string token;
 
         std::getline(file, line);
+
+        // tolerate Windows line endings
+        if(!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+
         std::stringstream ss(line);
-        
+
         while(std::getline(ss, token, ','))
         {
             tokens.push_back(token);
+        }
+
+        // Lospec format: name,author,color,color,...
+        if(tokens.size() < 3)
+        {
+            throw DitherError("Palette file has no colors (expected name,author,color,...) - " + name);
         }
 
         this->name = tokens[0];
 
         for(std::size_t index_tokens = 2; index_tokens < tokens.size(); index_tokens++)
         {
-            int hex_value;
+            // tolerate spaces around a value
+            std::string_view hex = tokens[index_tokens];
+            hex.remove_prefix(std::min(hex.find_first_not_of(" \t"), hex.size()));
+            hex.remove_suffix(hex.size() - std::min(hex.find_last_not_of(" \t") + 1, hex.size()));
+            unsigned int hex_value = 0;
+            const auto [ptr, ec] = std::from_chars(hex.data(), hex.data() + hex.size(), hex_value, 16);
 
-            try
+            if(hex.empty() || ec == std::errc::invalid_argument || ptr != hex.data() + hex.size())
             {
-                hex_value = std::stoi(tokens[index_tokens], nullptr, 16);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << "Error: Invalid palette value - " << tokens[index_tokens] << std::endl;
-                std::exit(EXIT_FAILURE);
+                throw DitherError("Invalid palette value - " + tokens[index_tokens]);
             }
 
-            if(hex_value < 0 || hex_value > static_cast<int>(Color::HEX_MAX))
+            if(ec == std::errc::result_out_of_range || hex_value > Color::HEX_MAX)
             {
-                std::cerr << "Error: Palette value is out of color hex code range (0-ffffff) - " << hex_value << std::endl;
-                std::exit(EXIT_FAILURE);
+                throw DitherError("Palette value is out of color hex code range (0-ffffff) - " + tokens[index_tokens]);
             }
-            
+
             colors.push_back(Color(hex_value));
         }
     }
 
-    return;
+    set_working_space(nullptr);
 }
 
-std::size_t Palette::size()
+bool Palette::has_preset(std::string_view name)
+{
+    return presets().contains(std::string(name));
+}
+
+std::vector<std::string> Palette::preset_names()
+{
+    std::vector<std::string> names;
+
+    for(const auto& [name, _] : presets())
+    {
+        names.push_back(name);
+    }
+
+    return names;
+}
+
+std::size_t Palette::size() const
 {
     return colors.size();
 }
 
-Color Palette::get_color_at(std::size_t index)
+Color Palette::get_color_at(std::size_t index) const
 {
     return colors[index];
+}
+
+const RGBf& Palette::get_working_at(std::size_t index) const
+{
+    return working[index];
+}
+
+void Palette::set_working_space(const Transfer* transfer)
+{
+    working.clear();
+    working.reserve(colors.size());
+
+    for(const Color& color : colors)
+    {
+        working.push_back(transfer ? transfer->to_linear(color) : RGBf(color));
+    }
+
+    return;
 }
 
 void Palette::sort()
 {
     const std::size_t colors_size = colors.size();
 
-    for(std::size_t index_primary = 0; index_primary < colors_size - 1; index_primary++)
+    for(std::size_t index_primary = 0; index_primary + 1 < colors_size; index_primary++)
     {
         for(std::size_t index_secondary = index_primary + 1; index_secondary < colors_size; index_secondary++)
         {
-            if(colors[index_secondary].get_lightness() < colors[index_primary].get_lightness())
+            if(working[index_secondary].lightness() < working[index_primary].lightness())
             {
-                Color temp = colors[index_primary];
-                colors[index_primary] = colors[index_secondary];
-                colors[index_secondary] = temp;
+                std::swap(colors[index_primary], colors[index_secondary]);
+                std::swap(working[index_primary], working[index_secondary]);
             }
         }
     }
@@ -89,73 +164,55 @@ void Palette::sort()
     return;
 }
 
-Color Palette::nearest(Color input, std::string mapping_method, std::vector<Color> input_range, std::vector<Color> output_range, std::vector<double> slope)
+std::size_t Palette::nearest_index(const RGBf& input, MappingMethod mapping_method) const
 {
-    int index_nearest = -1;
-    int distance_squared_nearest = INT_MAX;
-    const std::size_t colors_size = colors.size();
+    std::size_t index_nearest = 0;
+    double distance_nearest = std::numeric_limits<double>::infinity();
+    const std::size_t colors_size = working.size();
 
-    if(mapping_method == "EUCLIDEAN_DISTANCE")
+    switch(mapping_method)
+    {
+    case MappingMethod::EUCLIDEAN_DISTANCE:
+    case MappingMethod::UNIFORM_HISTOGRAM:
     {
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
-            const int distance_squared = input.distance_euclidean_squared(colors[index_palette]);
-            
-            if(distance_squared < distance_squared_nearest)
+            const double distance = input.distance_euclidean_squared(working[index_palette]);
+
+            if(distance < distance_nearest)
             {
-                distance_squared_nearest = distance_squared;
+                distance_nearest = distance;
                 index_nearest = index_palette;
             }
         }
+
+        break;
     }
-    else if(mapping_method == "MANHATTAN_DISTANCE")
-    {
+    case MappingMethod::MANHATTAN_DISTANCE:
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
-            const int distance_squared = input.distance_manhattan(colors[index_palette]);
+            const double distance = input.distance_manhattan(working[index_palette]);
 
-            if(distance_squared < distance_squared_nearest)
+            if(distance < distance_nearest)
             {
-                distance_squared_nearest = distance_squared;
+                distance_nearest = distance;
                 index_nearest = index_palette;
             }
         }
-    }
-    else if(mapping_method == "UNIFORM_HISTOGRAM")
-    {
-        const std::size_t INDEX_COLOR_MIN = 0;
-        const int color_mapped_r = output_range[INDEX_COLOR_MIN].r + (slope[Color::INDEX_R] * (input.r - input_range[INDEX_COLOR_MIN].r));
-        const int color_mapped_g = output_range[INDEX_COLOR_MIN].g + (slope[Color::INDEX_R] * (input.g - input_range[INDEX_COLOR_MIN].g));
-        const int color_mapped_b = output_range[INDEX_COLOR_MIN].b + (slope[Color::INDEX_R] * (input.b - input_range[INDEX_COLOR_MIN].b));
-        Color color_mapped = Color(color_mapped_r, color_mapped_g, color_mapped_b, Color::CHANNEL_MAX);
 
-        for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
-        {
-            const int distance_squared = color_mapped.distance_euclidean_squared(colors[index_palette]);
-
-            if(distance_squared < distance_squared_nearest)
-            {
-                distance_squared_nearest = distance_squared;
-                index_nearest = index_palette;
-            }
-        }
-    }
-    else
-    {
-        std::cerr << "Error: Invalid palette mapping method - " << mapping_method << std::endl;
-        std::exit(EXIT_FAILURE);
+        break;
     }
 
-    return colors[index_nearest];
+    return index_nearest;
 }
 
-int Palette::nearest_index_lighter(Color input)
+int Palette::nearest_index_lighter(const RGBf& input) const
 {
-    double input_lightness = input.get_lightness();
-    std::size_t palette_size = colors.size();
+    const double input_lightness = input.lightness();
+    const int palette_size = static_cast<int>(working.size());
 
     // none of the colors in the palette are lighter, so return error value
-    if(colors[palette_size - 1].get_lightness() <= input_lightness)
+    if(working[static_cast<std::size_t>(palette_size - 1)].lightness() <= input_lightness)
     {
         return -1;
     }
@@ -163,105 +220,62 @@ int Palette::nearest_index_lighter(Color input)
     for(int index_palette = palette_size - 2; index_palette >= 0; index_palette--)
     {
         // found the first darker color, so the next lighter color on the palette must be the nearest lighter palette color
-        if(colors[index_palette].get_lightness() < input_lightness)
+        if(working[static_cast<std::size_t>(index_palette)].lightness() < input_lightness)
         {
             return index_palette + 1;
         }
     }
 
-    // no lighter colors found, so the nearest lighter color must be the last palette color
-    return palette_size - 1;
+    // no darker colors found, so the nearest lighter color must be the first palette color
+    return 0;
 }
 
-int Palette::nearest_index_darker(Color input)
+int Palette::nearest_index_darker(const RGBf& input) const
 {
-    double input_lightness = input.get_lightness();
-    std::size_t palette_size = colors.size();
+    const double input_lightness = input.lightness();
+    const int palette_size = static_cast<int>(working.size());
 
     // none of the colors in the palette are darker, so return error value
-    if(colors[0].get_lightness() >= input_lightness)
+    if(working[0].lightness() >= input_lightness)
     {
         return -1;
     }
 
-    for(int index_palette = 1; index_palette < static_cast<int>(palette_size); index_palette++)
+    for(int index_palette = 1; index_palette < palette_size; index_palette++)
     {
         // found the first lighter color, so the next darker color on the palette must be the nearest darker palette color
-        if(colors[index_palette].get_lightness() > input_lightness)
+        if(working[static_cast<std::size_t>(index_palette)].lightness() > input_lightness)
         {
             return index_palette - 1;
         }
     }
 
-    // no darker colors found, so the nearest darker color must be the first palette color
-    return 0;
+    // no lighter colors found, so the nearest darker color must be the last palette color
+    return palette_size - 1;
 }
 
-Color Palette::pitch_vector()
+RGBf Palette::pitch_vector() const
 {
-    const std::size_t colors_size = colors.size();
-    Color distance_vector = Color(0, 0, 0, Color::CHANNEL_MAX);
+    const std::size_t colors_size = working.size();
+    RGBf pitch;
 
-    for(std::size_t index_colors = 0; index_colors < colors_size - 1; index_colors++)
+    // a single colour has no spread, and dividing by colors_size - 1 would divide by zero
+    if(colors_size < 2)
     {
-        distance_vector.r += std::abs(colors[index_colors].r - colors[index_colors + 1].r);
-        distance_vector.g += std::abs(colors[index_colors].g - colors[index_colors + 1].g);
-        distance_vector.b += std::abs(colors[index_colors].b - colors[index_colors + 1].b);
+        return pitch;
     }
 
-    distance_vector.r /= static_cast<double>(colors_size - 1);
-    distance_vector.g /= static_cast<double>(colors_size - 1);
-    distance_vector.b /= static_cast<double>(colors_size - 1);
-
-    return distance_vector;
-}
-
-std::vector<Color> Palette::get_color_range()
-{
-    std::vector<Color> color_range = {
-        Color(Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX),
-        Color(0, 0, 0, Color::CHANNEL_MAX)
-    };
-    const std::size_t palette_size = colors.size();
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
-
-    for(std::size_t index_palette = 0; index_palette < palette_size; index_palette++)
+    for(std::size_t index_colors = 0; index_colors + 1 < colors_size; index_colors++)
     {
-        const Color color = colors[index_palette];
-
-        if(color.r < color_range[INDEX_COLOR_MIN].r)
-        {
-            color_range[INDEX_COLOR_MIN].r = color.r;
-        }
-        else if(color.r > color_range[INDEX_COLOR_MAX].r)
-        {
-            color_range[INDEX_COLOR_MAX].r = color.r;
-        }
-
-        if(color.g < color_range[INDEX_COLOR_MIN].g)
-        {
-            color_range[INDEX_COLOR_MIN].g = color.g;
-        }
-        else if(color.g > color_range[INDEX_COLOR_MAX].g)
-        {
-            color_range[INDEX_COLOR_MAX].g = color.g;
-        }
-
-        if(color.b < color_range[INDEX_COLOR_MIN].b)
-        {
-            color_range[INDEX_COLOR_MIN].b = color.b;
-        }
-        else if(color.b > color_range[INDEX_COLOR_MAX].b)
-        {
-            color_range[INDEX_COLOR_MAX].b = color.b;
-        }
+        pitch.r += std::fabs(working[index_colors].r - working[index_colors + 1].r);
+        pitch.g += std::fabs(working[index_colors].g - working[index_colors + 1].g);
+        pitch.b += std::fabs(working[index_colors].b - working[index_colors + 1].b);
     }
 
-    return color_range;
+    return pitch * (1.0f / static_cast<float>(colors_size - 1));
 }
 
-std::string Palette::to_string()
+std::string Palette::to_string() const
 {
     std::string output = name + "\n";
     std::size_t colors_size = colors.size();

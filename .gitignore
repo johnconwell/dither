@@ -1,4 +1,8 @@
 .vscode/
 *.exe
 *.o
+*.d
 *.bat
+bin/dither
+bin/test_dither
+tests/tmp/
