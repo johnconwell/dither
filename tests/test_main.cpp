@@ -362,7 +362,7 @@ TEST(ordered_grey_coverage)
 }
 
 // An identity kernel must leave the image unchanged, edges included.
-XFAIL(convolve_identity, "B2: convolution shifts the image and never pads the top/left edges")
+TEST(convolve_identity)
 {
     auto pattern = [](unsigned x, unsigned y) {
         return RGBA{static_cast<unsigned char>(x * 13 + y * 7),
@@ -407,6 +407,90 @@ XFAIL(convolve_identity, "B2: convolution shifts the image and never pads the to
 
         CHECK_MSG(mismatches == 0, label + " identity kernel: " + std::to_string(mismatches) + " of " + std::to_string(W * H) + " pixels changed");
     }
+}
+
+// Blurring a solid image must give back the same solid colour, edges and corners
+// included: with clamp-to-edge sampling there is no black border to bleed in.
+TEST(convolve_blur_solid)
+{
+    const Color solid(100, 150, 200);
+    const unsigned W = 9, H = 7;
+    const fs::path src = write_png("convolve_solid.png", W, H, [](unsigned, unsigned) { return RGBA{100, 150, 200, 255}; });
+
+    for(const std::string kernel : {"BOX_BLUR", "GAUSSIAN_BLUR"})
+    {
+        Dither d = load(src);
+        d.convolve(kernel);
+        int mismatches = 0;
+
+        for(unsigned y = 0; y < H; y++)
+        {
+            for(unsigned x = 0; x < W; x++)
+            {
+                mismatches += same_rgb(d.image.get_pixel(x, y), solid) ? 0 : 1;
+            }
+        }
+
+        CHECK_MSG(mismatches == 0, kernel + " on a solid image: " + std::to_string(mismatches) + " of " + std::to_string(W * H) + " pixels changed");
+    }
+}
+
+// The kernel is flipped, so this is true convolution: out(p) = sum k(j) * in(p - j).
+// A kernel with a single 1 in its top-left cell (j = (-1, -1)) must therefore move the
+// image up and left by one pixel (a correlation would move it down and right), and the
+// bottom row and right column repeat the edge.
+TEST(convolve_is_true_convolution)
+{
+    auto pattern = [](unsigned x, unsigned y) {
+        return RGBA{static_cast<unsigned char>(x * 20 + 10), static_cast<unsigned char>(y * 30 + 5), static_cast<unsigned char>((x * y) % 256), 255};
+    };
+    const unsigned W = 8, H = 6;
+    const fs::path src = write_png("convolve_shift_src.png", W, H, pattern);
+    const fs::path kernel = write_text("shift_3x3.csv", "1,0,0\n0,0,0\n0,0,0\n");
+
+    Dither d = load(src);
+    d.convolve(kernel.string());
+    int mismatches = 0;
+
+    for(unsigned y = 0; y < H; y++)
+    {
+        for(unsigned x = 0; x < W; x++)
+        {
+            const RGBA e = pattern(std::min(x + 1, W - 1), std::min(y + 1, H - 1));
+            mismatches += same_rgb(d.image.get_pixel(x, y), Color(e.r, e.g, e.b)) ? 0 : 1;
+        }
+    }
+
+    CHECK_MSG(mismatches == 0, "top-left impulse kernel: " + std::to_string(mismatches) + " of " + std::to_string(W * H) + " pixels differ from the image shifted up-left by 1");
+}
+
+// Convolution keeps the source alpha and rounds to nearest rather than truncating.
+TEST(convolve_keeps_alpha_and_rounds)
+{
+    const unsigned W = 5, H = 5;
+    const fs::path src = write_png("convolve_alpha.png", W, H, [](unsigned x, unsigned y) {
+        return RGBA{10, 10, 10, static_cast<unsigned char>(x * 50 + y)};
+    });
+    // 0.97 * 10 = 9.7 -> rounds to 10 (truncation would give 9)
+    const fs::path kernel = write_text("scale_097.csv", "0.97\n");
+
+    Dither d = load(src);
+    d.convolve(kernel.string());
+    int alpha_changed = 0;
+    int wrong_value = 0;
+
+    for(unsigned y = 0; y < H; y++)
+    {
+        for(unsigned x = 0; x < W; x++)
+        {
+            const Color c = d.image.get_pixel(x, y);
+            alpha_changed += c.a == static_cast<int>(x * 50 + y) ? 0 : 1;
+            wrong_value += same_rgb(c, Color(10, 10, 10)) ? 0 : 1;
+        }
+    }
+
+    CHECK_MSG(alpha_changed == 0, std::to_string(alpha_changed) + " pixels lost their alpha");
+    CHECK_MSG(wrong_value == 0, std::to_string(wrong_value) + " pixels were not rounded to nearest (0.97 * 10 should give 10)");
 }
 
 // Floyd-Steinberg to 2 colours in linear light. REVIEW.md B3 computes the correct

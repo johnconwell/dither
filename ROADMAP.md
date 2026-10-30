@@ -19,7 +19,8 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 | 0.2 Test harness | ✅ Done (30 Oct 2026) | `make test`: 1 pass, 8 expected failures, 0.3 s. |
 | 1.1–1.4 Quick correctness wins | ✅ Done (30 Oct 2026) | `make test`: 7 pass, 2 expected failures (B2, B3). Verified on GCC 13 / Linux; not yet on MinGW. |
 | 1.5 Release v1.0.1 | Not started | Rebuild `bin/dither.exe`, tag, CHANGELOG. |
-| 2–6 | Not started | |
+| 2.1 Convolution rewrite | ✅ Done (30 Oct 2026) | `make test`: 11 pass, 1 expected failure (B3). Verified on GCC 13 / Linux; not yet on MinGW. |
+| 3–6 | Not started | |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -185,6 +186,25 @@ This is an arithmetic fix only. Phase 5 decides what the method should do.
   - Flip the kernel so this is true convolution. That changes asymmetric kernels such as `emboss.csv`, so note it in the CHANGELOG.
 - **Done when:** `convolve_identity` passes for 3×3, 5×5 and 3×5 kernels, and `BOX_BLUR` on a solid image gives back the same solid colour, edges included.
 
+### Phase 2 as built (30 Oct 2026)
+- **`Dither::convolve`** (`src/dither.cpp`) is rewritten as one pass with signed `int` indices:
+  - it copies frame 0 into a source buffer first, so it never reads pixels it has already written;
+  - each sample is clamped to the image (clamp-to-edge), so there is no padded copy and no black border;
+  - the kernel is flipped in both directions, so this is true convolution;
+  - each channel is rounded with `std::lround` and clamped to 0–255, instead of truncated;
+  - the source alpha is kept instead of forced to 255.
+- The `_convolve` template is removed from `include/dither.h`, and `<cmath>` is added there.
+- **Tests:** `convolve_identity` changed from `XFAIL` to `TEST`. Three new tests, all of which fail on the old code:
+  - `convolve_blur_solid` — `BOX_BLUR` and `GAUSSIAN_BLUR` on a solid image give back the same colour everywhere, edges included;
+  - `convolve_is_true_convolution` — a 3×3 kernel with a single 1 in its top-left cell moves the image **up and left** by one pixel (a correlation would move it down and right);
+  - `convolve_keeps_alpha_and_rounds` — alpha is kept, and a 1×1 kernel of 0.97 on value 10 gives 10, not 9.
+- **Regression check on `boat.png`:**
+  - error diffusion, ordered, reduce and grayscale output is byte-identical to the Phase 1 build;
+  - with `BOX_BLUR`, `GAUSSIAN_BLUR`, `UNSHARP_MASK` and `RIDGE_4`, interior pixels match the old output, once you undo its shift, to within ±1 (rounding instead of truncation);
+  - the top row now has a mean of about 148.7, the same as the source; it used to be 0–87, depending on the kernel.
+- **Output change for users:** asymmetric user kernels such as `data/convolution_kernels/emboss.csv` now come out mirrored compared with v1.0.0, because the kernel is flipped. Note this in the CHANGELOG.
+- **Warnings:** a clean build now gives 52 first-party warnings, down from 64.
+
 ---
 
 ## Phase 3 — Colour pipeline and gamma → **v1.1.0**
@@ -338,7 +358,7 @@ These are README edits. They can be done at any time, but should match each rele
 | 4 | 1.2 Matrix key (B5) | XS |
 | 5 | 1.3 UNIFORM_HISTOGRAM arithmetic (B4) | S |
 | 6 | 1.4 Input validation (B6) | M |
-| 7 | 2.1 Convolution (B2) | M |
+| 7 | ~~2.1 Convolution (B2)~~ ✅ | M |
 | 8 | 3.1–3.3 Float pipeline, gamma, threshold centring (B3, Q1, Q3, Q6) | L |
 | 9 | 4.1–4.6 Refactor | L |
 | 10 | 5.x Spec decisions | M–L |

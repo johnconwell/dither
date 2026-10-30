@@ -28,6 +28,14 @@
 | `.gitignore` also ignores `*.d`, `bin/dither`, `bin/test_dither` and `tests/tmp/` | — |
 | Running the stricter warnings found something new | **Q12 added.** Also corrects §5: `-Wconversion` does **not** flag B1; only `-Wsign-conversion` does. |
 
+### 0.3 ROADMAP Phase 2 (30 Oct 2026, not yet committed)
+
+| Change | Effect on this review |
+|---|---|
+| `Dither::convolve` rewritten: signed indices, clamp-to-edge sampling, flipped kernel, rounding, alpha kept; `_convolve` template removed | **B2 resolved**, including the correlation-vs-convolution and truncation notes. Convolution now also keeps alpha (part of Q2). |
+| `convolve_identity` is now a `TEST`; new `convolve_blur_solid`, `convolve_is_true_convolution` and `convolve_keeps_alpha_and_rounds` | `make test`: 11 pass, 1 expected failure (B3). |
+| `-Wtype-limits` warnings from the old padding loops are gone | 52 first-party warnings on a clean build, down from 64. |
+
 ---
 
 ## 1. Executive summary
@@ -112,7 +120,7 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 
 **Fix:** `static_cast<int>(Color::CHANNEL_MAX)` here, or make the `Color` constants `int`. The defective `output/*ordered*` example images have already been removed. If you restore examples, generate them after this fix.
 
-### B2 — Convolution shifts the image and never pads edges (High, **Verified**)
+### B2 — Convolution shifts the image and never pads edges (High, **Verified**) — ✅ resolved in Phase 2
 `dither.cpp:63-130`, `dither.h:55-56`
 - The top and left padding loops are `for(std::size_t y = -kernel_height_half; y < 0; y++)`. An unsigned value is never `< 0`, so these loops never run. `-Wextra` warns about this.
 - The bottom padding writes to row `y` rather than `y + kernel_height_half`. The centre fill then overwrites it, so the real bottom padding stays 0.
@@ -258,7 +266,7 @@ Items marked ✅ are fixed by the Phase 0 Makefile. That Makefile is in `Makefil
 A step-by-step implementation plan is in **ROADMAP.md**.
 
 1. **B1** — one-line cast fix in `ordered`. *(Phase 0 — build and tests — is done.)*
-2. **B2** — rewrite convolution with signed, clamped sampling; check it with an identity-kernel test.
+2. ~~**B2** — rewrite convolution with signed, clamped sampling; check it with an identity-kernel test.~~ ✅ done in Phase 2.
 3. **B3** — float linear pipeline, palette linearised once, standard sRGB transfer function.
 4. **B5, B6** — fix the key typo; validate every enum-like argument and the frame count in `CLI::parse`; return non-zero for unknown output formats; reject empty palettes.
 5. **B4 / S5** — fix the slope and the min/max search, guard against division by zero, and decide whether to implement real histogram mapping or rename it (for example `RANGE_STRETCH`).

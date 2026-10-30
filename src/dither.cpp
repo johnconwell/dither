@@ -49,83 +49,59 @@ void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction
 
 void Dither::convolve(std::string name_kernel)
 {
-    Convolve convolve = Convolve(name_kernel);
-    const std::size_t image_height = image.get_height();
-    const std::size_t image_width = image.get_width();
-    const std::size_t kernel_height = convolve.kernel.size();
-    const std::size_t kernel_width = convolve.kernel[0].size();
-    const std::size_t kernel_height_half = kernel_height / 2;
-    const std::size_t kernel_width_half = kernel_width / 2;
-    std::vector<std::vector<int>> image_matrix_r = std::vector<std::vector<int>>(image_height + 2 * kernel_height_half, std::vector<int>(image_width + 2 * kernel_width_half, 0));
-    std::vector<std::vector<int>> image_matrix_g = std::vector<std::vector<int>>(image_height + 2 * kernel_height_half, std::vector<int>(image_width + 2 * kernel_width_half, 0));
-    std::vector<std::vector<int>> image_matrix_b = std::vector<std::vector<int>>(image_height + 2 * kernel_height_half, std::vector<int>(image_width + 2 * kernel_width_half, 0));
+    const Convolve convolve = Convolve(name_kernel);
+    const std::vector<std::vector<double>>& kernel = convolve.kernel;
+    const int image_height = static_cast<int>(image.get_height());
+    const int image_width = static_cast<int>(image.get_width());
+    const int kernel_height = static_cast<int>(kernel.size());
+    const int kernel_width = static_cast<int>(kernel[0].size());
+    const int kernel_height_half = kernel_height / 2;
+    const int kernel_width_half = kernel_width / 2;
+    constexpr int CHANNEL_MAX = static_cast<int>(Color::CHANNEL_MAX);
 
-    // pad pixels around the top and bottom of the image
-    for(std::size_t x = 0; x < image_width; x++)
+    // read every source pixel once, so already-convolved pixels are never sampled again
+    std::vector<Color> source(static_cast<std::size_t>(image_width) * static_cast<std::size_t>(image_height));
+
+    for(int y = 0; y < image_height; y++)
     {
-        // pad around the top of the image
-        for(std::size_t y = -kernel_height_half; y < 0; y++)
+        for(int x = 0; x < image_width; x++)
         {
-            Color color = image.get_pixel(x, 0);
-            image_matrix_r[y][x + kernel_width_half] = color.r;
-            image_matrix_g[y][x + kernel_width_half] = color.g;
-            image_matrix_b[y][x + kernel_width_half] = color.b;
-        }
-
-        // pad around the bottom of the image
-        for(std::size_t y = image_height; y < image_height + kernel_height_half; y++)
-        {
-            Color color = image.get_pixel(x, image_height - 1);
-            image_matrix_r[y][x + kernel_width_half] = color.r;
-            image_matrix_g[y][x + kernel_width_half] = color.g;
-            image_matrix_b[y][x + kernel_width_half] = color.b;
+            source[static_cast<std::size_t>(y * image_width + x)] = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
-    // pad pixels around the left and right borders of the image
-    for(std::size_t y = 0; y < image_height; y++)
+    auto to_channel = [](double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, static_cast<long>(CHANNEL_MAX))); };
+
+    for(int y = 0; y < image_height; y++)
     {
-        // pad around the left border
-        for(std::size_t x = -kernel_width_half; x < 0; x++)
+        for(int x = 0; x < image_width; x++)
         {
-            Color color = image.get_pixel(0, y);
-            image_matrix_r[y + kernel_height_half][x] = color.r;
-            image_matrix_g[y + kernel_height_half][x] = color.g;
-            image_matrix_b[y + kernel_height_half][x] = color.b;
-        }
+            double sum_r = 0.0;
+            double sum_g = 0.0;
+            double sum_b = 0.0;
 
-        // fill in the center of the image
-        for(std::size_t x = 0; x < image_width; x++)
-        {
-            Color color = image.get_pixel(x, y);
-            image_matrix_r[y + kernel_height_half][x + kernel_width_half] = color.r;
-            image_matrix_g[y + kernel_height_half][x + kernel_width_half] = color.g;
-            image_matrix_b[y + kernel_height_half][x + kernel_width_half] = color.b;
-        }
+            for(int ky = 0; ky < kernel_height; ky++)
+            {
+                // samples outside the image take the value of the nearest edge pixel (clamp-to-edge)
+                const int sy = std::clamp(y + ky - kernel_height_half, 0, image_height - 1);
 
-        // pad around the right border
-        for(std::size_t x = image_width; x < image_width + kernel_width_half; x++)
-        {
-            Color color = image.get_pixel(image_width - 1, y);
-            image_matrix_r[y + kernel_height_half][x] = color.r;
-            image_matrix_g[y + kernel_height_half][x] = color.g;
-            image_matrix_b[y + kernel_height_half][x] = color.b;
-        }
-    }
+                for(int kx = 0; kx < kernel_width; kx++)
+                {
+                    const int sx = std::clamp(x + kx - kernel_width_half, 0, image_width - 1);
+                    const Color& sample = source[static_cast<std::size_t>(sy * image_width + sx)];
 
-    std::vector<std::vector<int>> image_matrix_r_convolved = _convolve<int, double>(image_matrix_r, convolve.kernel);
-    std::vector<std::vector<int>> image_matrix_g_convolved = _convolve<int, double>(image_matrix_g, convolve.kernel);
-    std::vector<std::vector<int>> image_matrix_b_convolved = _convolve<int, double>(image_matrix_b, convolve.kernel);
+                    // the kernel is flipped in both directions, which makes this a true convolution rather than a correlation
+                    const double weight = kernel[static_cast<std::size_t>(kernel_height - 1 - ky)][static_cast<std::size_t>(kernel_width - 1 - kx)];
 
-    for(std::size_t y = 0; y < image_height; y++)
-    {
-        for(std::size_t x = 0; x < image_width; x++)
-        {
-            image_matrix_r_convolved[y][x] = std::clamp(image_matrix_r_convolved[y][x], 0, static_cast<int>(Color::CHANNEL_MAX));
-            image_matrix_g_convolved[y][x] = std::clamp(image_matrix_g_convolved[y][x], 0, static_cast<int>(Color::CHANNEL_MAX));
-            image_matrix_b_convolved[y][x] = std::clamp(image_matrix_b_convolved[y][x], 0, static_cast<int>(Color::CHANNEL_MAX));
-            Color color = Color(image_matrix_r_convolved[y][x], image_matrix_g_convolved[y][x], image_matrix_b_convolved[y][x], Color::CHANNEL_MAX);
-            image.set_pixel(color, x, y);
+                    sum_r += sample.r * weight;
+                    sum_g += sample.g * weight;
+                    sum_b += sample.b * weight;
+                }
+            }
+
+            const Color& original = source[static_cast<std::size_t>(y * image_width + x)];
+            const Color color = Color(to_channel(sum_r), to_channel(sum_g), to_channel(sum_b), original.a);
+            image.set_pixel(color, static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
