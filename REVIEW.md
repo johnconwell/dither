@@ -2,7 +2,7 @@
 
 **Scope:** every first-party source file (`src/`, `include/` apart from the vendored lodepng, cxxopts and gif-h), the `Makefile`, `run.bat`, the `data/` CSVs and `README.md` (taken as the spec).
 **Method:** I read all the code, then built the project (GCC 13, `-std=c++23`) and ran targeted tests against `input/boat.png` and small synthetic images to confirm each bug below. A finding marked **Verified** was reproduced by running the program. A finding marked *By inspection* comes from reading the code only.
-**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the ROADMAP Phase 0–4 work. See §0 for what changed since the first review.
+**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the ROADMAP Phase 0–5 work. See §0 for what changed since the first review.
 
 ---
 
@@ -66,6 +66,19 @@ Phase 4 is a refactor only: 861 of 861 Phase 3 outputs are byte-identical. ROADM
 | 5 new tests, plus `ed_kernel_sums` rewritten | `make test`: 23 pass, 0 expected failures, under 1 s. The runner now reports an escaped exception as a failure instead of aborting. |
 | The Phase 0 Makefile has replaced `Makefile` | §5 updated. |
 
+### 0.6 ROADMAP Phase 5 (30 Oct 2026)
+
+Decisions taken: D1 option B, D2 reject combinations, D4 yes, D5 keep `STOCHASTIC_PWM`. ROADMAP "Phase 5 as built" has the details.
+
+| Change | Effect on this review |
+|---|---|
+| `UNIFORM_HISTOGRAM` is histogram equalisation onto the palette (luminance rank → palette rank), in reduce, error diffusion and ordered | **S5 resolved.** `boat.png` → `TWILIGHT5` gives 19.5–20.5% per colour. B4's arithmetic was fixed in Phase 1; the range stretch it applied to is now gone. |
+| More than one of `-r`, `-e`, `-d`, `-t` is rejected | **§2.3 point 2 and S13 resolved.** |
+| `PWM` is deterministic (exactly `round(duty · frames)` lighter frames, blue-noise phase); the old behaviour is `STOCHASTIC_PWM` | **Q4 resolved** (apart from the optional hue-aware pair) and **S20 resolved.** Local flicker on `tulips.png` drops by about 40%. |
+| `JARVIS_JUDICE_NINKE`, with `JARVICE_JUDICE_NINKE` as an alias | **S18 resolved.** |
+| `-a` applies to `-c` | **S11:** `-c` no longer ignores `-a`; the README row lists every operation `-a` applies to. |
+| 5 new tests | `make test`: 28 pass, 0 expected failures, 0 first-party warnings. |
+
 ---
 
 ## 1. Executive summary
@@ -121,7 +134,7 @@ main.cpp                          catches DitherError (error.h), prints it, retu
 ### 2.3 Architectural concerns
 
 1. ✅ *(Resolved in Phase 4: enums parsed once in `CLI`.)* **Configuration is passed around as strings.** Method names travel as `std::string` all the way down to the per-pixel code. For example, `Palette::nearest` compares `mapping_method` against string literals for every pixel, and nothing is validated up front. Because of this, invalid values are caught late or not at all (see B6). Parsing into `enum class`es once, in `CLI`, would fix both problems.
-2. **The CLI model has one shared slot for the mapping method and palette.** `-r`, `-e`, `-d` and `-t` all write into the same `mapping_method` and `palette` fields (`cli.cpp:107-108, 124-125, 140-141, 157-158`). If you combine operations, the last flag silently wins for all of them. The README says "any number of optional flags" but never says how combinations behave.
+2. ✅ *(Resolved in Phase 5: combining quantisers is rejected, D2.)* **The CLI model has one shared slot for the mapping method and palette.** `-r`, `-e`, `-d` and `-t` all write into the same `mapping_method` and `palette` fields (`cli.cpp:107-108, 124-125, 140-141, 157-158`). If you combine operations, the last flag silently wins for all of them. The README says "any number of optional flags" but never says how combinations behave.
 3. ✅ *(Resolved in Phase 4: static tables in `.cpp` files; generated Bayer; byte-array noise matrices.)* **Lookup tables are rebuilt on every construction.** `PRESET_PALETTES`, `KERNELS`, `METHODS`, `COORDINATES`, `SCALARS` and `THRESHOLD_MATRIXES` are non-static `const` data members. Each `Ordered` object therefore rebuilds an `unordered_map` holding all 20 matrices, including two 256×256 ones. Putting ~600 KB of numbers in `ordered.h` also makes compiles slow: `dither.o` is 3 MB. These tables should be `static inline const` data, ideally in a `.cpp` file, or loaded from the CSVs that already exist in `data/threshold_matrixes/`.
 4. ✅ *(Resolved in Phase 4: `DitherError`.)* **Library code exits the process.** `std::exit(EXIT_FAILURE)` is called from constructors and from `Palette::nearest`. That makes the classes impossible to reuse or test. Returning errors, or throwing and catching in `main`, would be cleaner.
 5. ✅ *(Resolved in Phase 3: dithering uses a float working buffer.)* **The colour pipeline is 8-bit integers throughout**, including linear-light values and diffused error. This causes avoidable precision loss (B3, Q3). A `float` working buffer is the usual approach.
@@ -233,7 +246,7 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 - ✅ *(Phase 3)* **Q1 — Error is truncated, not carried.** `static_cast<int>(error * scalar)` at `dither.cpp:240-242, 284-286` truncates toward zero, so small errors vanish. The effect is negligible with high-contrast palettes (measured within 0.2%), but it causes banding with close palettes. A float error buffer fixes it.
 - ✅ *(Phase 3, D3)* **Q2 — Alpha is discarded.** Every operation writes alpha = 255, and transparent pixels get dithered and pass error on to their neighbours. A fully transparent test image came out opaque. The README says nothing about alpha either way.
 - ✅ *(Phase 3: mid-rank centring, which also fixes the uneven small white-noise matrices)* **Q3 — Bayer thresholds are biased.** Built-in values run `k·256/N²` (2×2 is {0, 64, 128, 192}). Subtracting 127 gives a mean offset of −31 for 2×2, which darkens results slightly. Centred thresholds `(k+0.5)·256/N² − 128` remove the bias.
-- **Q4 — PWM is stochastic, not pulse-width modulation.** Each frame draws a random number against the duty cycle. With 4–8 frames the real proportion varies a lot from pixel to pixel, which gives flicker noise. A deterministic schedule (lighter for `round(duty·frames)` frames, phase-shifted per pixel by a blue-noise value) would match the name and look much smoother. PWM also picks its darker/lighter pair using HSL lightness only, so hue is ignored.
+- ✅ *(Phase 5: deterministic `PWM`; the old one is `STOCHASTIC_PWM`)* **Q4 — PWM is stochastic, not pulse-width modulation.** Each frame draws a random number against the duty cycle. With 4–8 frames the real proportion varies a lot from pixel to pixel, which gives flicker noise. A deterministic schedule (lighter for `round(duty·frames)` frames, phase-shifted per pixel by a blue-noise value) would match the name and look much smoother. PWM also picks its darker/lighter pair using HSL lightness only, so hue is ignored.
 - ✅ *(Phase 3 and 4)* **Q5 — Per-pixel copies.** `Palette::nearest(Color, std::string, std::vector<Color>, std::vector<Color>, std::vector<double>)` takes everything by value, so each pixel copies a string and three vectors. `distance_euclidean_squared` also allocates its default weight vector on every call. Passing by `const&` and using `std::array` would fix this. Speed is fine at `-O1` (~0.14 s for 512×512). The old Makefile built at `-O0`; the Phase 0 Makefile uses `-O2`.
 - ✅ *(Phase 3: dither paths use `RGBf` distances in `double`; the old `Color` functions remain but are unused there)* **Q6 — Weighted distance truncated.** `distance_euclidean_squared` returns `int` from a weighted `double` sum, which truncates. It also overflows for out-of-range inputs, and that overflow is what turns B1 into a silent wrong answer rather than a merely bad one.
 - **Q7 — Fragile includes.** `ordered.h` uses `std::ifstream`, `std::stringstream`, `std::filesystem` and `std::count_if` without including `<fstream>`, `<sstream>`, `<filesystem>` or `<algorithm>`. `convolve.h` is missing `<algorithm>`. It builds on your MinGW toolchain only through transitive includes. **On GCC 13/Linux it fails:** `'count_if' is not a member of 'std'`. ✅ **Resolved in Phase 0**: `ordered.h` and `convolve.h` now include `<algorithm>`, `<fstream>`, `<sstream>`, `<filesystem>` and `<iterator>`, and the project builds on GCC 13.
@@ -259,22 +272,22 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 | S2 | Error diffusion syntax: `-e ALGORITHM,MAPPING_METHOD,PALETTE` (README line 44) | Needs 4 arguments: `ALGORITHM,SCAN_PATTERN,MAPPING_METHOD,PALETTE`. The CLI table at line 19 is correct; the section text is stale. `run.bat` also still uses the 3-argument form and fails. |
 | S3 | Flag spelled `-e, --error-diffusion` (line 43) | The real long flag is `--error_diffusion`. The hyphenated form gives "Option 'error-diffusion' does not exist". |
 | S4 | Temporal syntax `dither -i INPUT -t …` (line 60), with no `-o` | `-o` is required, and the program exits with "No output image file path specified". |
-| S5 | `UNIFORM_HISTOGRAM` "maps each pixel such that the output contains approximately equal amount of each color" | It is a per-channel min–max linear stretch of the image range onto the palette range, followed by nearest-colour Euclidean. There is no histogram involved, and it is buggy too (B4). Either implement histogram equalisation (CDF → palette rank) or change the description. |
+| S5 ✅ | `UNIFORM_HISTOGRAM` "maps each pixel such that the output contains approximately equal amount of each color" | It is a per-channel min–max linear stretch of the image range onto the palette range, followed by nearest-colour Euclidean. There is no histogram involved, and it is buggy too (B4). Either implement histogram equalisation (CDF → palette rank) or change the description. **Phase 5: histogram equalisation implemented (D1 option B).** |
 | S6 | `UNIFORM_HISTOGRAM` "Not valid when using `-t` flag" | Not enforced: it reads uninitialised values (B6). It should be rejected with a clear error. |
 | S7 | `EUCLIDEAN_DISTANCE` "nearest palette colour in Euclidean space" | Weighted by BT.709 luma coefficients (0.2126, 0.7152, 0.0722) by default (`color.h:36`). That is a reasonable choice but undocumented. Meanwhile `MANHATTAN_DISTANCE` is unweighted, so the two are inconsistent. |
 | S8 | `MANHATTAN_DISTANCE` "nearest palette color in Cartesian space" | The wording is misleading; Euclidean distance is Cartesian too. Better: "sum of absolute per-channel differences (L1)". |
 | S9 | `WHITE_NOISE_64X64` | Unreachable because of the misspelled key (B5). |
 | S10 | "an 8×8 bayer matrix contains every possible value (0-255)" | An 8×8 matrix has 64 values (0, 4, 8, …, 252). Only 16×16 has all 256. The sentence and its conclusion should be revised. |
-| S11 | `-a` "Applies gamma correction to the input image" | Applies only to grayscale, reduce, error diffusion, ordered and temporal; `-c` ignores it. ~~It also behaves incorrectly (B3).~~ Correct since Phase 3. The README should say what "gamma correction" means here: processing in linear light. |
+| S11 | `-a` "Applies gamma correction to the input image" | ~~Applies only to grayscale, reduce, error diffusion, ordered and temporal; `-c` ignores it.~~ Applies to every operation since Phase 5 (D4), and the README row says so. ~~It also behaves incorrectly (B3).~~ Correct since Phase 3. The README should say what "gamma correction" means here: processing in linear light. |
 | S12 | Convolution, reduce and dither sections: "input file and output files must be .png" | Not validated. `.gif` output works for every operation, and other extensions fail silently with exit code 0 (B6). |
-| S13 | "Use `dither` followed by … any number of optional flags" | When operations are combined, they run in a fixed order and share one mapping method and palette (Architecture §2.3, point 2). This should be documented, or each operation should get its own arguments. |
+| S13 ✅ | "Use `dither` followed by … any number of optional flags" | When operations are combined, they run in a fixed order and share one mapping method and palette (Architecture §2.3, point 2). This should be documented, or each operation should get its own arguments. **Phase 5: combinations are rejected and the order is documented.** |
 | S14 | Temporal section: "See Temporal Dithering Methods for available **threshold matrixes**" | Copy-paste wording. Also, the Temporal Dithering Methods table has no intro sentence, unlike the other tables. |
 | S15 | Ordered section: "In addition to the built-in **convolution kernels** below …" | Should say "threshold matrixes". |
 | S16 | "Why Use Dither…" list ends with an empty bullet `- ` | Unfinished. Could mention temporal dithering, serpentine scanning and blue-noise matrices. |
 | S17 | To Compile: "Requirements: GNU C++ compiler, make" | The new Makefile uses `-std=c++23` (it was `-std=c++26`, which needs GCC 14 or newer), so GCC 13 is now the minimum. The README should say so, and should also mention `make test`. |
-| S18 | `JARVICE_JUDICE_NINKE` | The algorithm is Jarvis–Judice–Ninke. Consider accepting `JARVIS_JUDICE_NINKE`, keeping the old name as an alias. |
+| S18 ✅ | `JARVICE_JUDICE_NINKE` | The algorithm is Jarvis–Judice–Ninke. Consider accepting `JARVIS_JUDICE_NINKE`, keeping the old name as an alias. **Done in Phase 5.** |
 | S19 | Temporal `RANDOM`: "weighted based on color distance" | Accurate (inverse distance), but it is worth stating that weights are 1/d and that exact matches are a special case. |
-| S20 | Temporal `PWM`: "modulates each pixel between the nearest lighter and darker palette colors" | "Nearest" is decided by HSL lightness only, and the modulation is random per frame (Q4). |
+| S20 ✅ | Temporal `PWM`: "modulates each pixel between the nearest lighter and darker palette colors" | "Nearest" is decided by HSL lightness only, and the modulation is random per frame (Q4). **Phase 5: PWM is deterministic and the README describes both PWM methods.** |
 
 The items that do match the README: all 9 error-diffusion kernels (including Atkinson's 3/4 error), both scan patterns, the 8 grayscale weightings, the 7 convolution kernels (the Gaussian sums to 1.000; `UNSHARP_MASK` = 2δ − G), all 11 palettes, the remaining 19 threshold matrices, the Lospec CSV format, and GIF / vertical-sprite-sheet PNG output for temporal dithering.
 
@@ -300,7 +313,7 @@ A step-by-step implementation plan is in **ROADMAP.md**.
 2. ~~**B2** — rewrite convolution with signed, clamped sampling; check it with an identity-kernel test.~~ ✅ done in Phase 2.
 3. ~~**B3** — float linear pipeline, palette linearised once, standard sRGB transfer function.~~ ✅ done in Phase 3 (with Q1, Q2, Q3, Q6, Q12).
 4. **B5, B6** — fix the key typo; validate every enum-like argument and the frame count in `CLI::parse`; return non-zero for unknown output formats; reject empty palettes.
-5. **B4 / S5** — fix the slope and the min/max search, guard against division by zero, and decide whether to implement real histogram mapping or rename it (for example `RANGE_STRETCH`).
+5. ~~**B4 / S5** — fix the slope and the min/max search, guard against division by zero, and decide whether to implement real histogram mapping or rename it (for example `RANGE_STRETCH`).~~ ✅ arithmetic in Phase 1, histogram mapping in Phase 5.
 6. **Docs** — S2–S4 and S10–S17; document what `--benchmark` measures; Q11 tidy-ups.
-7. ~~**Structure** — enums instead of strings, static tables, a float error buffer~~ ✅ done in Phases 3 and 4. Still to do: per-operation palette arguments (D2, Phase 5).
+7. ~~**Structure** — enums instead of strings, static tables, a float error buffer~~ ✅ done in Phases 3 and 4. ~~Still to do: per-operation palette arguments (D2, Phase 5).~~ ✅ D2 decided as "reject combinations" and done in Phase 5.
 8. ~~**Build** — complete the dependencies, `-O2 -Wextra -Wconversion`, a non-destructive `clean`, the missing `#include`s~~ ✅ done in Phase 0. Still to do: the minimum GCC version in the README (S17).

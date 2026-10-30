@@ -32,7 +32,7 @@ public:
     bool temporal = false;
     TemporalMethod temporal_method = TemporalMethod::PWM;
     std::size_t temporal_frames = 0;
-    // shared by -r, -e, -d and -t: if more than one is given, the last one parsed wins (REVIEW §2.3 point 2)
+    // used by whichever one of -r, -e, -d and -t was given; combining them is rejected (D2)
     MappingMethod mapping_method = MappingMethod::EUCLIDEAN_DISTANCE;
     std::string palette;
     bool benchmark = false;

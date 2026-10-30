@@ -18,7 +18,8 @@ namespace
             return EXIT_SUCCESS;
         }
 
-        // operations always run in this order, whatever order the flags were given in
+        // operations always run in this order, whatever order the flags were given in;
+        // CLI allows at most one of reduce, error diffusion, ordered and temporal (D2)
         Benchmark benchmark;
         benchmark.start();
         Dither dither;
@@ -33,7 +34,7 @@ namespace
 
         if(cli.convolve)
         {
-            dither.convolve(cli.convolve_kernel);
+            dither.convolve(cli.convolve_kernel, cli.gamma_correction);
             benchmark.step("convolve");
         }
 

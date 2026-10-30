@@ -2,8 +2,9 @@
 #include "error.h"
 #include <algorithm> // std::min
 #include <charconv> // std::from_chars
-#include <cmath> // std::fabs, std::isnan
+#include <cmath> // std::fabs
 #include <fstream> // std::ifstream
+#include <limits> // std::numeric_limits
 #include <sstream> // std::stringstream
 #include <unordered_map> // std::unordered_map
 
@@ -163,20 +164,7 @@ void Palette::sort()
     return;
 }
 
-RGBf Palette::RangeMap::apply(const RGBf& c) const
-{
-    auto map_channel = [](float value, float channel_slope, float input_min, float output_min) {
-        return std::isnan(channel_slope) ? value : output_min + channel_slope * (value - input_min);
-    };
-
-    return {
-        map_channel(c.r, slope.r, input_min.r, output_min.r),
-        map_channel(c.g, slope.g, input_min.g, output_min.g),
-        map_channel(c.b, slope.b, input_min.b, output_min.b),
-    };
-}
-
-std::size_t Palette::nearest_index(const RGBf& input, MappingMethod mapping_method, const RangeMap* range_map) const
+std::size_t Palette::nearest_index(const RGBf& input, MappingMethod mapping_method) const
 {
     std::size_t index_nearest = 0;
     double distance_nearest = std::numeric_limits<double>::infinity();
@@ -187,11 +175,9 @@ std::size_t Palette::nearest_index(const RGBf& input, MappingMethod mapping_meth
     case MappingMethod::EUCLIDEAN_DISTANCE:
     case MappingMethod::UNIFORM_HISTOGRAM:
     {
-        const RGBf target = (mapping_method == MappingMethod::UNIFORM_HISTOGRAM && range_map) ? range_map->apply(input) : input;
-
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
-            const double distance = target.distance_euclidean_squared(working[index_palette]);
+            const double distance = input.distance_euclidean_squared(working[index_palette]);
 
             if(distance < distance_nearest)
             {
@@ -287,31 +273,6 @@ RGBf Palette::pitch_vector() const
     }
 
     return pitch * (1.0f / static_cast<float>(colors_size - 1));
-}
-
-Palette::RangeMap Palette::range_map(const RGBf& image_min, const RGBf& image_max) const
-{
-    RGBf palette_min(std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
-    RGBf palette_max(-palette_min.r, -palette_min.g, -palette_min.b);
-
-    for(const RGBf& c : working)
-    {
-        palette_min = {std::min(palette_min.r, c.r), std::min(palette_min.g, c.g), std::min(palette_min.b, c.b)};
-        palette_max = {std::max(palette_max.r, c.r), std::max(palette_max.g, c.g), std::max(palette_max.b, c.b)};
-    }
-
-    auto channel_slope = [](float in_min, float in_max, float out_min, float out_max) {
-        // flat channel: nothing to stretch, and dividing would be a divide by zero (B4)
-        return in_max <= in_min ? UNMAPPED : (out_max - out_min) / (in_max - in_min);
-    };
-
-    return {
-        image_min,
-        palette_min,
-        RGBf(channel_slope(image_min.r, image_max.r, palette_min.r, palette_max.r),
-             channel_slope(image_min.g, image_max.g, palette_min.g, palette_max.g),
-             channel_slope(image_min.b, image_max.b, palette_min.b, palette_max.b)),
-    };
 }
 
 std::string Palette::to_string() const

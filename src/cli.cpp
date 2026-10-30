@@ -63,7 +63,7 @@ void CLI::parse(int argc, const char* argv[])
         ("h,help", "Displays help")
         ("i,input", "Specifies the input png image file path", cxxopts::value<std::string>(), "<FILE_PATH>")
         ("o,output", "Specifies the file path the output png will be saved to", cxxopts::value<std::string>(), "<FILE_PATH>")
-        ("a,gamma_correction", "Processes the image in linear light (gamma correction)")
+        ("a,gamma_correction", "Processes the image in linear light (gamma correction); applies to -g, -c, -r, -e, -d and -t")
         ("g,grayscale", "Converts the image to grayscale using the specified channel weights", cxxopts::value<std::string>(), "<GRAYSCALE_WEIGHTS>")
         ("c,convolve", "Convolves the input image using the specified kernel", cxxopts::value<std::string>(), "<KERNEL>")
         ("r,reduce", "Reduces the image to the specified palette without applying dithering", cxxopts::value<std::vector<std::string>>(), "<MAPPING_METHOD>,<PALETTE>")
@@ -118,7 +118,15 @@ void CLI::parse(int argc, const char* argv[])
         convolve_kernel = result["convolve"].as<std::string>();
     }
 
-    // the raw mapping method text: -r, -e, -d and -t share one slot, so the last flag wins
+    // only one quantising operation per run (ROADMAP 5.2, D2); -g and -c are pre-processing and combine freely
+    const std::size_t quantisers = result.count("reduce") + result.count("error_diffusion") + result.count("ordered") + result.count("temporal");
+
+    if(quantisers > 1)
+    {
+        throw DitherError("Only one of -r, -e, -d and -t can be used per run (-g and -c can be combined with any of them)");
+    }
+
+    // the raw mapping method text of the one quantising operation
     std::string mapping_method_text;
 
     if(result.count("reduce"))

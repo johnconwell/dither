@@ -2,7 +2,6 @@
 
 #include "color.h" // Color, RGBf, Transfer
 #include "options.h" // MappingMethod
-#include <limits> // std::numeric_limits
 #include <string> // std::string
 #include <string_view> // std::string_view
 #include <vector> // std::vector
@@ -16,20 +15,6 @@ public:
 
     static bool has_preset(std::string_view name);
     static std::vector<std::string> preset_names();
-
-    // UNIFORM_HISTOGRAM: per-channel linear map that stretches the image's range onto the palette's
-    // range, in working space. A channel that is flat in the image has slope UNMAPPED (NaN) and is
-    // passed through unchanged (B4).
-    struct RangeMap
-    {
-        RGBf input_min;
-        RGBf output_min;
-        RGBf slope;
-
-        RGBf apply(const RGBf& c) const;
-    };
-
-    static inline const float UNMAPPED = std::numeric_limits<float>::quiet_NaN();
 
     std::size_t size() const;
     // original sRGB colour, which is what gets written to the output image
@@ -45,16 +30,15 @@ public:
     // sort darkest to lightest by working-space HSL lightness
     void sort();
 
-    // index of the nearest palette colour to a working-space value; range_map is used by UNIFORM_HISTOGRAM only
-    std::size_t nearest_index(const RGBf& input, MappingMethod mapping_method, const RangeMap* range_map = nullptr) const;
+    // index of the nearest palette colour to a working-space value. UNIFORM_HISTOGRAM is not a
+    // per-pixel distance (Dither maps it through the image's luminance histogram, ROADMAP 5.1),
+    // so here it falls back to EUCLIDEAN_DISTANCE.
+    std::size_t nearest_index(const RGBf& input, MappingMethod mapping_method) const;
     int nearest_index_lighter(const RGBf& input) const;
     int nearest_index_darker(const RGBf& input) const;
 
     // average absolute step between neighbouring colours (palette must be sorted), in working space
     RGBf pitch_vector() const;
-
-    // UNIFORM_HISTOGRAM map from an image's working-space range {min, max} onto this palette's range
-    RangeMap range_map(const RGBf& image_min, const RGBf& image_max) const;
 
     std::string to_string() const;
 

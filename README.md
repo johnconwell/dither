@@ -3,7 +3,8 @@
 A command line interface application that provides several image processing functions that can be applied to PNG images.
 
 ## Usage
-Use the `dither` command followed by the input and output flags and any number of optional flags. See the example section for a detailed look at use cases.
+Use the `dither` command followed by the input and output flags and any number of optional flags. See the example section for a detailed look at use cases.</br>
+Only one of `-r`, `-e`, `-d` and `-t` can be used per run. `-g` and `-c` can be combined with any of them. Operations always run in this order, whatever order the flags are given in: grayscale, convolve, then the reduce or dither operation.
 
 ## CLI
 `dither [options]`
@@ -12,7 +13,7 @@ Use the `dither` command followed by the input and output flags and any number o
 | `-h, --help` | Displays help | Optional |
 | `-i, --input <FILE_PATH>` | Specifies the input png image file path | Required |
 | `-o, --output <FILE_PATH>` | Specifies the file path the output png will be saved to | Required |
-| `-a, --gamma_correction` | Applies gamma correction the the input image | Optional |
+| `-a, --gamma_correction` | Processes the image in linear light (gamma correction). Applies to `-g`, `-c`, `-r`, `-e`, `-d` and `-t` | Optional |
 | `-g, --grayscale <GRAYSCALE_WEIGHTS>` | Converts the input image to grayscale using the specified channel weights | Optional |
 | `-c, --convolve <KERNEL>` | Convolves the input image using the specified kernel | Optional |
 | `-r, --reduce <MAPPING_METHOD>,<PALETTE>` | Reduces the image to the specified palette without applying dithering | Optional |
@@ -103,7 +104,7 @@ Algorithm options when using the `-e, --error_diffusion` flag. The input image w
 | :-- | :-- |
 | `LINEAR` | {X, 1} |
 | `FLOYD_STEINBERG` | {0, X, 7}<br/>{3, 5, 1}<br/>(1 / 16)|
-| `JARVICE_JUDICE_NINKE` | {0, 0, X, 7, 5}<br/>{3, 5, 7, 5, 3}<br/>{1, 3, 5, 3, 1}<br/>(1 / 48) |
+| `JARVIS_JUDICE_NINKE` | {0, 0, X, 7, 5}<br/>{3, 5, 7, 5, 3}<br/>{1, 3, 5, 3, 1}<br/>(1 / 48)<br/>The old spelling `JARVICE_JUDICE_NINKE` is still accepted |
 | `STUCKI` | {0, 0, X, 8, 4}<br/>{2, 4, 8, 4, 2}<br/>{1, 2, 4, 2, 1}<br/>(1 / 42) |
 | `ATKINSON` | {0, X, 1, 1}<br/>{1, 1, 1, 0}<br/>{0, 1, 0, 0}<br/>(1 / 8) |
 | `BURKES` | {0, 0, X, 8, 4}<br/>{2, 4, 8, 4, 2}<br/>(1 / 32) |
@@ -156,8 +157,9 @@ Each element in the threshold matrix must be an integer with a value between 0 a
 
 | TEMPORAL_METHOD | Description |
 | :-- | :-- |
+| `PWM` | Modulates each pixel between the nearest lighter and darker palette colors (by lightness). The pixel shows the lighter color in exactly round(duty cycle × frames) consecutive frames, where the duty cycle comes from the pixel's distance to the two colors. Each pixel starts at a different frame, taken from a blue noise matrix, so every frame has about the same overall brightness |
+| `STOCHASTIC_PWM` | Like `PWM`, but each frame independently picks the lighter color with probability equal to the duty cycle. This was the `PWM` behaviour before v2.0.0; it flickers more |
 | `RANDOM` | Randomly assigns each pixel of each frame to any palette color, weighted based on color distance |
-| `PWM` | Modulates each pixel between the nearest lighter and darker palette colors |
 
 ### Palette Mapping Methods
 Mapping method options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. Each pixel in the output image will be mapped to a color in the palette according to the specified option. Pixels are mapped after accumulated error is applied in error diffusion algorithms and after the threshold matrix is applied in ordered algorithms.
@@ -165,7 +167,7 @@ Mapping method options when using the `-r, --reduce`, `-e, --error_diffusion`, `
 | :-- | :-- |
 | `EUCLIDEAN_DISTANCE` | Maps each pixel to the nearest palette color in Euclidean space |
 | `MANHATTAN_DISTANCE` | Maps each pixel to the nearest palette color in Cartesian space |
-| `UNIFORM_HISTOGRAM` | Maps each pixel such that the output image contains approximately equal amount of each color in the specified palette. Note that the resulting image may not have a uniform distribution of palette colors, but will likely have a more uniform distribution than if choosing a distance-based method. Not valid when using `-t` flag. |
+| `UNIFORM_HISTOGRAM` | Histogram equalisation onto the palette: the palette is sorted darkest to lightest, and each pixel is mapped by its luminance rank in the image, so the output contains approximately equal amounts of each palette color. Error diffusion and ordered dithering work on the same rank scale. Hue does not affect which color is chosen. An image with a single luminance falls back to `EUCLIDEAN_DISTANCE`. Not valid when using `-t` flag. |
 
 ### Palettes
 Palette options when using the `-r, --reduce`, `-e, --error_diffusion`, `-d, --ordered`, or `-t, --temporal` flags. The following palettes are built in and can be referenced by name. In addition to the built-in palettes below, the user can specify a palette in a csv file in the format:</br>
@@ -190,7 +192,7 @@ The below examples are executed from the root directory. `dither` can be used in
 `.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_grayscale_bt709.png -g BT709`</br>
 `.\bin\dither.exe -i .\input\boat.png -o .\output\boat_reduce_twilight5.png -r MANHATTAN_DISTANCE,TWILIGHT5`</br>
 `.\bin\dither.exe -i .\input\lena.png -o .\output\lena_convolve_unsharp_mask.png -c UNSHARP_MASK`</br>
-`.\bin\dither.exe -i .\input\earth.png -o .\output\earth_error_diffusion_jarvice-judice-ninke_raster_twilight5.png -e JARVICE_JUDICE_NINKE,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5`</br>
+`.\bin\dither.exe -i .\input\earth.png -o .\output\earth_error_diffusion_jarvis-judice-ninke_raster_twilight5.png -e JARVIS_JUDICE_NINKE,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5`</br>
 `.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_serpentine_midnight_ablaze.png -e ATKINSON,SERPENTINE,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
 `.\bin\dither.exe -i .\input\peppers.png -o .\output\peppers_ordered_blue_noise_64x64_cherrymelon.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,.\data\palettes\cherrymelon.csv`</br>
 `.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_ordered_bayer_16x16_witching-hour.png -d BAYER_16X16,EUCLIDEAN_DISTANCE,.\data\palettes\witching-hour.csv -a`</br>

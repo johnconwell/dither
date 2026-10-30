@@ -21,7 +21,7 @@ namespace
                                                          {1, 0, 7.0 / 16.0},
                 {-1, 1, 3.0 / 16.0}, {0, 1, 5.0 / 16.0}, {1, 1, 1.0 / 16.0},
             }},
-            {"JARVICE_JUDICE_NINKE", {
+            {"JARVIS_JUDICE_NINKE", {
                                                                                      {1, 0, 7.0 / 48.0}, {2, 0, 5.0 / 48.0},
                 {-2, 1, 3.0 / 48.0}, {-1, 1, 5.0 / 48.0}, {0, 1, 7.0 / 48.0}, {1, 1, 5.0 / 48.0}, {2, 1, 3.0 / 48.0},
                 {-2, 2, 1.0 / 48.0}, {-1, 2, 3.0 / 48.0}, {0, 2, 5.0 / 48.0}, {1, 2, 3.0 / 48.0}, {2, 2, 1.0 / 48.0},
@@ -58,11 +58,27 @@ namespace
 
         return PRESETS;
     }
+
+    // old spellings that are still accepted (S18: the algorithm is Jarvis-Judice-Ninke)
+    const std::unordered_map<std::string, std::string>& aliases()
+    {
+        static const std::unordered_map<std::string, std::string> ALIASES = {
+            {"JARVICE_JUDICE_NINKE", "JARVIS_JUDICE_NINKE"},
+        };
+
+        return ALIASES;
+    }
+
+    std::string canonical(const std::string& name)
+    {
+        const auto it = aliases().find(name);
+        return it == aliases().end() ? name : it->second;
+    }
 }
 
-ErrorDiffusion::ErrorDiffusion(const std::string& name) : name(name)
+ErrorDiffusion::ErrorDiffusion(const std::string& name) : name(canonical(name))
 {
-    const auto it = presets().find(name);
+    const auto it = presets().find(this->name);
 
     if(it == presets().end())
     {
@@ -74,7 +90,7 @@ ErrorDiffusion::ErrorDiffusion(const std::string& name) : name(name)
 
 bool ErrorDiffusion::has_preset(std::string_view name)
 {
-    return presets().contains(std::string(name));
+    return presets().contains(canonical(std::string(name)));
 }
 
 std::vector<std::string> ErrorDiffusion::preset_names()

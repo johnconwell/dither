@@ -5,9 +5,8 @@
 #include "grayscale.h"
 #include "ordered.h"
 #include "palette.h"
-#include <algorithm> // std::clamp, std::sort, std::equal_range
-#include <cmath> // std::lround
-#include <limits> // std::numeric_limits
+#include <algorithm> // std::clamp, std::min, std::sort, std::equal_range
+#include <cmath> // std::floor, std::lround
 #include <random> // std::random_device, std::mt19937, std::uniform_real_distribution, std::discrete_distribution
 #include <vector> // std::vector
 
@@ -32,9 +31,6 @@ namespace
         std::size_t height = 0;
         std::vector<RGBf> pixels;
         std::vector<int> alpha;
-        // range over the non-transparent pixels, for UNIFORM_HISTOGRAM
-        RGBf min;
-        RGBf max;
 
         std::size_t index(std::size_t x, std::size_t y) const { return y * width + x; }
         // fully transparent pixels pass through unchanged, spread no error and receive none (D3)
@@ -49,10 +45,6 @@ namespace
         w.pixels.resize(w.width * w.height);
         w.alpha.resize(w.width * w.height);
 
-        constexpr float INF = std::numeric_limits<float>::infinity();
-        w.min = RGBf(INF, INF, INF);
-        w.max = RGBf(-INF, -INF, -INF);
-
         for(std::size_t y = 0; y < w.height; y++)
         {
             for(std::size_t x = 0; x < w.width; x++)
@@ -62,12 +54,6 @@ namespace
                 const RGBf value = transfer ? transfer->to_linear(color) : RGBf(color);
                 w.pixels[i] = value;
                 w.alpha[i] = color.a;
-
-                if(color.a != 0)
-                {
-                    w.min = RGBf(std::min(w.min.r, value.r), std::min(w.min.g, value.g), std::min(w.min.b, value.b));
-                    w.max = RGBf(std::max(w.max.r, value.r), std::max(w.max.g, value.g), std::max(w.max.b, value.b));
-                }
             }
         }
 
@@ -81,6 +67,9 @@ namespace
         color.a = alpha;
         return color;
     }
+
+    // the blue-noise matrix that gives each pixel its PWM phase
+    constexpr const char* PWM_PHASE_MATRIX = "BLUE_NOISE_64X64";
 
     // Threshold matrix -> offsets centred on 0 in (-0.5, 0.5), using each value's mid-rank in the
     // matrix: (number below + half the number equal) / count - 0.5. For the Bayer and blue-noise
@@ -112,6 +101,141 @@ namespace
         }
 
         return offsets;
+    }
+
+    // UNIFORM_HISTOGRAM (ROADMAP 5.1, D1 option B): histogram equalisation onto the palette.
+    // The palette is sorted darkest to lightest, and every pixel gets a position u in [0, N]
+    // along it from the image's luminance CDF: u = N * (pixels darker + half the pixels equal) /
+    // pixels. Palette colour k covers [k, k + 1), so reducing with floor(u) uses each colour for
+    // about 1/N of the image. Error diffusion and ordered dithering quantise u the same way and
+    // carry their error / threshold offset in u (one unit = one palette step), so they keep the
+    // same equal shares. Only the luminance order matters, so hue does not pick the colour.
+    struct HistogramMap
+    {
+        // every visible pixel has the same luminance: there is nothing to equalise, and the
+        // operations fall back to EUCLIDEAN_DISTANCE
+        bool flat = true;
+        std::size_t palette_size = 0;
+        std::vector<float> position;
+
+        std::size_t rank(float u) const
+        {
+            const float top = static_cast<float>(palette_size - 1);
+            return static_cast<std::size_t>(std::clamp(std::floor(u), 0.0f, top));
+        }
+
+        // the centre of rank k, which is what the quantisation error is measured against
+        static float centre(std::size_t k) { return static_cast<float>(k) + 0.5f; }
+    };
+
+    // BT.709 luminance of a working value (sRGB-encoded, or linear light with -a)
+    double luminance(const RGBf& c)
+    {
+        return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    }
+
+    HistogramMap make_histogram_map(const Working& w, std::size_t palette_size)
+    {
+        HistogramMap map;
+        map.palette_size = palette_size;
+        map.position.assign(w.pixels.size(), 0.0f);
+        std::vector<double> sorted;
+        sorted.reserve(w.pixels.size());
+
+        for(std::size_t i = 0; i < w.pixels.size(); i++)
+        {
+            if(!w.transparent(i))
+            {
+                sorted.push_back(luminance(w.pixels[i]));
+            }
+        }
+
+        std::sort(sorted.begin(), sorted.end());
+        map.flat = sorted.empty() || sorted.front() == sorted.back();
+
+        if(map.flat)
+        {
+            return map;
+        }
+
+        const double count = static_cast<double>(sorted.size());
+        const double n = static_cast<double>(palette_size);
+
+        for(std::size_t i = 0; i < w.pixels.size(); i++)
+        {
+            if(w.transparent(i))
+            {
+                continue;
+            }
+
+            const auto range = std::equal_range(sorted.begin(), sorted.end(), luminance(w.pixels[i]));
+            const double below = static_cast<double>(range.first - sorted.begin());
+            const double equal = static_cast<double>(range.second - range.first);
+            map.position[i] = static_cast<float>(n * (below + equal / 2.0) / count);
+        }
+
+        return map;
+    }
+
+    struct Tap
+    {
+        int dx;
+        int dy;
+        float scalar;
+    };
+
+    // Error diffusion over any working value type V (RGBf colours, or float histogram positions).
+    // quantise(V) gives a palette index, target(index) the value that index stands for, and the
+    // difference is pushed forward onto the not-yet-visited neighbours.
+    template <class V, class Quantise, class Target, class Prepare>
+    void diffuse(std::vector<V>& values, const Working& w, const std::vector<Tap>& taps, bool serpentine, Prepare prepare, Quantise quantise, Target target, Image& image, const Palette& palette)
+    {
+        const int image_width = static_cast<int>(w.width);
+        const int image_height = static_cast<int>(w.height);
+
+        for(int y = 0; y < image_height; y++)
+        {
+            // serpentine: odd rows run right to left, and the kernel is mirrored with them
+            const int direction = (serpentine && y % 2 == 1) ? -1 : 1;
+            const int x_start = direction > 0 ? 0 : image_width - 1;
+
+            for(int step = 0; step < image_width; step++)
+            {
+                const int x = x_start + direction * step;
+                const std::size_t i = w.index(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+
+                if(w.transparent(i))
+                {
+                    continue;
+                }
+
+                // set current pixel to nearest palette color (accounting for accumulated error)
+                const V value = prepare(values[i]);
+                const std::size_t nearest = quantise(value);
+                const V error = value - target(nearest);
+
+                for(const Tap& tap : taps)
+                {
+                    // signed coordinates, so the bounds check is real (Q12)
+                    const int new_x = x + direction * tap.dx;
+                    const int new_y = y + tap.dy;
+
+                    if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
+                    {
+                        continue;
+                    }
+
+                    const std::size_t j = w.index(static_cast<std::size_t>(new_x), static_cast<std::size_t>(new_y));
+
+                    if(!w.transparent(j))
+                    {
+                        values[j] += error * tap.scalar;
+                    }
+                }
+
+                image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+            }
+        }
     }
 }
 
@@ -147,9 +271,11 @@ void Dither::grayscale(const std::string& name_grayscale_weights, bool gamma_cor
     }
 }
 
-void Dither::convolve(const std::string& name_kernel)
+void Dither::convolve(const std::string& name_kernel, bool gamma_correction)
 {
     const Convolve convolve = Convolve(name_kernel);
+    // with -a the image is convolved in linear light and encoded back with one rounding (D4)
+    const Transfer transfer(image.get_gamma());
     const std::vector<std::vector<double>>& kernel = convolve.kernel;
     const int image_height = static_cast<int>(image.get_height());
     const int image_width = static_cast<int>(image.get_width());
@@ -159,13 +285,18 @@ void Dither::convolve(const std::string& name_kernel)
     const int kernel_width_half = kernel_width / 2;
 
     // read every source pixel once, so already-convolved pixels are never sampled again
-    std::vector<Color> source(static_cast<std::size_t>(image_width) * static_cast<std::size_t>(image_height));
+    const std::size_t pixel_count = static_cast<std::size_t>(image_width) * static_cast<std::size_t>(image_height);
+    std::vector<RGBf> source(pixel_count);
+    std::vector<int> source_alpha(pixel_count);
 
     for(int y = 0; y < image_height; y++)
     {
         for(int x = 0; x < image_width; x++)
         {
-            source[static_cast<std::size_t>(y * image_width + x)] = image.get_pixel(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+            const Color color = image.get_pixel(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+            const std::size_t i = static_cast<std::size_t>(y * image_width + x);
+            source[i] = gamma_correction ? transfer.to_linear(color) : RGBf(color);
+            source_alpha[i] = color.a;
         }
     }
 
@@ -187,7 +318,7 @@ void Dither::convolve(const std::string& name_kernel)
                 for(int kx = 0; kx < kernel_width; kx++)
                 {
                     const int sx = std::clamp(x + kx - kernel_width_half, 0, image_width - 1);
-                    const Color& sample = source[static_cast<std::size_t>(sy * image_width + sx)];
+                    const RGBf& sample = source[static_cast<std::size_t>(sy * image_width + sx)];
 
                     // the kernel is flipped in both directions, which makes this a true convolution rather than a correlation
                     const double weight = kernel[static_cast<std::size_t>(kernel_height - 1 - ky)][static_cast<std::size_t>(kernel_width - 1 - kx)];
@@ -198,8 +329,10 @@ void Dither::convolve(const std::string& name_kernel)
                 }
             }
 
-            const Color& original = source[static_cast<std::size_t>(y * image_width + x)];
-            const Color color = Color(to_channel(sum_r), to_channel(sum_g), to_channel(sum_b), original.a);
+            const int alpha = source_alpha[static_cast<std::size_t>(y * image_width + x)];
+            const Color color = gamma_correction
+                ? transfer.to_encoded(RGBf(static_cast<float>(sum_r), static_cast<float>(sum_g), static_cast<float>(sum_b)), alpha)
+                : Color(to_channel(sum_r), to_channel(sum_g), to_channel(sum_b), alpha);
             image.set_pixel(color, static_cast<std::size_t>(x), static_cast<std::size_t>(y));
         }
     }
@@ -212,7 +345,16 @@ void Dither::reduce(MappingMethod mapping_method, const std::string& name_palett
     Palette palette = Palette(name_palette);
     palette.set_working_space(working_space);
     const Working w = make_working(image, working_space);
-    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
+    HistogramMap histogram;
+
+    if(mapping_method == MappingMethod::UNIFORM_HISTOGRAM)
+    {
+        palette.sort();
+        histogram = make_histogram_map(w, palette.size());
+    }
+
+    // a flat image has no histogram to equalise, so it maps by distance (nearest_index falls back to Euclidean)
+    const bool use_histogram = mapping_method == MappingMethod::UNIFORM_HISTOGRAM && !histogram.flat;
 
     for(std::size_t y = 0; y < w.height; y++)
     {
@@ -225,7 +367,7 @@ void Dither::reduce(MappingMethod mapping_method, const std::string& name_palett
                 continue;
             }
 
-            const std::size_t nearest = palette.nearest_index(w.pixels[i], mapping_method, &range_map);
+            const std::size_t nearest = use_histogram ? histogram.rank(histogram.position[i]) : palette.nearest_index(w.pixels[i], mapping_method);
             image.set_pixel(output_color(palette, nearest, w.alpha[i]), x, y);
         }
     }
@@ -240,14 +382,6 @@ void Dither::error_diffusion(const std::string& name_algorithm, ScanPattern scan
     palette.set_working_space(working_space);
     // the working buffer doubles as the error buffer: diffused error is added straight onto it, in float (Q1)
     Working w = make_working(image, working_space);
-    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
-
-    struct Tap
-    {
-        int dx;
-        int dy;
-        float scalar;
-    };
     std::vector<Tap> taps;
 
     for(const ErrorDiffusion::Tap& tap : error_diffusion.taps)
@@ -255,53 +389,33 @@ void Dither::error_diffusion(const std::string& name_algorithm, ScanPattern scan
         taps.push_back({tap.dx, tap.dy, static_cast<float>(tap.scalar)});
     }
 
-    const int image_width = static_cast<int>(w.width);
-    const int image_height = static_cast<int>(w.height);
     const bool serpentine = scan_pattern == ScanPattern::SERPENTINE;
 
-    for(int y = 0; y < image_height; y++)
+    if(mapping_method == MappingMethod::UNIFORM_HISTOGRAM)
     {
-        // serpentine: odd rows run right to left, and the kernel is mirrored with them
-        const int direction = (serpentine && y % 2 == 1) ? -1 : 1;
-        const int x_start = direction > 0 ? 0 : image_width - 1;
+        palette.sort();
+        HistogramMap histogram = make_histogram_map(w, palette.size());
 
-        for(int step = 0; step < image_width; step++)
+        if(!histogram.flat)
         {
-            const int x = x_start + direction * step;
-            const std::size_t i = w.index(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
-
-            if(w.transparent(i))
-            {
-                continue;
-            }
-
-            // set current pixel to nearest palette color (accounting for accumulated error)
-            const RGBf value = w.pixels[i].clamped();
-            const std::size_t nearest = palette.nearest_index(value, mapping_method, &range_map);
-            const RGBf error = value - palette.get_working_at(nearest);
-
-            for(const Tap& tap : taps)
-            {
-                // signed coordinates, so the bounds check is real (Q12)
-                const int new_x = x + direction * tap.dx;
-                const int new_y = y + tap.dy;
-
-                if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
-                {
-                    continue;
-                }
-
-                const std::size_t j = w.index(static_cast<std::size_t>(new_x), static_cast<std::size_t>(new_y));
-
-                if(!w.transparent(j))
-                {
-                    w.pixels[j] += error * tap.scalar;
-                }
-            }
-
-            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+            // diffuse in histogram position; one unit of error is one palette step
+            const float top = static_cast<float>(histogram.palette_size);
+            diffuse(
+                histogram.position, w, taps, serpentine,
+                [top](float u) { return std::clamp(u, 0.0f, top); },
+                [&histogram](float u) { return histogram.rank(u); },
+                [](std::size_t k) { return HistogramMap::centre(k); },
+                image, palette);
+            return;
         }
     }
+
+    diffuse(
+        w.pixels, w, taps, serpentine,
+        [](const RGBf& value) { return value.clamped(); },
+        [&palette, mapping_method](const RGBf& value) { return palette.nearest_index(value, mapping_method); },
+        [&palette](std::size_t k) { return palette.get_working_at(k); },
+        image, palette);
 }
 
 void Dither::ordered(const std::string& name_threshold_matrix, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction)
@@ -314,7 +428,14 @@ void Dither::ordered(const std::string& name_threshold_matrix, MappingMethod map
     palette.sort();
 
     const Working w = make_working(image, working_space);
-    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
+    HistogramMap histogram;
+
+    if(mapping_method == MappingMethod::UNIFORM_HISTOGRAM)
+    {
+        histogram = make_histogram_map(w, palette.size());
+    }
+
+    const bool use_histogram = mapping_method == MappingMethod::UNIFORM_HISTOGRAM && !histogram.flat;
     const std::vector<std::vector<float>> thresholds = centred_thresholds(ordered.threshold_matrix);
     const std::size_t threshold_matrix_height = thresholds.size();
     const std::size_t threshold_matrix_width = thresholds[0].size();
@@ -334,8 +455,18 @@ void Dither::ordered(const std::string& name_threshold_matrix, MappingMethod map
 
             // offset each pixel by up to half a palette step either way, following the centred threshold
             const float threshold = thresholds[y % threshold_matrix_height][x % threshold_matrix_width];
-            const RGBf value = w.pixels[i] + palette_pitch_vector * threshold;
-            const std::size_t nearest = palette.nearest_index(value, mapping_method, &range_map);
+            std::size_t nearest = 0;
+
+            if(use_histogram)
+            {
+                // in histogram position a palette step is exactly 1
+                nearest = histogram.rank(histogram.position[i] + threshold);
+            }
+            else
+            {
+                const RGBf value = w.pixels[i] + palette_pitch_vector * threshold;
+                nearest = palette.nearest_index(value, mapping_method);
+            }
 
             image.set_pixel(output_color(palette, nearest, w.alpha[i]), x, y);
         }
@@ -375,6 +506,16 @@ void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, Mappin
 
     std::vector<double> weights;
 
+    // deterministic PWM (5.3): each pixel starts its run of lighter frames at a phase taken from
+    // a blue-noise matrix, so neighbouring pixels with the same duty cycle switch in different
+    // frames and every frame shows about the same overall brightness
+    std::vector<std::vector<float>> phases;
+
+    if(temporal_method == TemporalMethod::PWM)
+    {
+        phases = centred_thresholds(Ordered(PWM_PHASE_MATRIX).threshold_matrix);
+    }
+
     for(std::size_t y = 0; y < w.height; y++)
     {
         for(std::size_t x = 0; x < w.width; x++)
@@ -396,7 +537,7 @@ void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, Mappin
 
             const RGBf& color = w.pixels[i];
 
-            if(temporal_method == TemporalMethod::PWM)
+            if(temporal_method == TemporalMethod::PWM || temporal_method == TemporalMethod::STOCHASTIC_PWM)
             {
                 // modulate between the nearest darker and lighter palette colours
                 const int index_darker = palette.nearest_index_darker(color);
@@ -427,10 +568,27 @@ void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, Mappin
                     duty_cycle = distance_total > 0.0 ? distance_darker / distance_total : 0.0;
                 }
 
+                if(temporal_method == TemporalMethod::STOCHASTIC_PWM)
+                {
+                    // the v1 behaviour: a fresh random draw against the duty cycle in every frame
+                    for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
+                    {
+                        const std::size_t chosen = dis(mt) < duty_cycle ? palette_index_lighter : palette_index_darker;
+                        image.set_pixel(output_color(palette, chosen, w.alpha[i]), x, y, index_frame);
+                    }
+
+                    continue;
+                }
+
+                // exactly round(duty * frames) lighter frames, starting at this pixel's phase
+                const std::size_t lighter_frames = static_cast<std::size_t>(std::lround(duty_cycle * static_cast<double>(image_frames)));
+                const float phase_offset = phases[y % phases.size()][x % phases[0].size()] + 0.5f; // [0, 1)
+                const std::size_t phase = std::min(static_cast<std::size_t>(phase_offset * static_cast<float>(image_frames)), image_frames - 1);
+
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
                 {
-                    const std::size_t chosen = dis(mt) < duty_cycle ? palette_index_lighter : palette_index_darker;
-                    image.set_pixel(output_color(palette, chosen, w.alpha[i]), x, y, index_frame);
+                    const bool lighter = (index_frame + image_frames - phase) % image_frames < lighter_frames;
+                    image.set_pixel(output_color(palette, lighter ? palette_index_lighter : palette_index_darker, w.alpha[i]), x, y, index_frame);
                 }
             }
             else

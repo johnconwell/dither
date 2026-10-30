@@ -24,7 +24,9 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 | 3.5 Release v1.1.0 | Not started | Regenerate the README examples into `docs/examples/`. |
 | 4.1–4.6 Internal refactor | ✅ Done (30 Oct 2026) | `make test`: 23 pass, 0 expected failures, 0 first-party warnings (now with `-Wsign-conversion`). Output byte-identical to Phase 3 on 861 CLI runs. Verified on GCC 13 / Linux; not yet on MinGW. The remote tools can't write `Makefile`, so the Phase 4 Makefile is in `Makefile.new` (new object list, `-Wsign-conversion`). |
 | 4.7 Release v1.2.0 | Not started | Tag and CHANGELOG (no output changes; see "Phase 4 as built"). |
-| 5–6 | Not started | |
+| 5.1–5.5 Spec decisions | ✅ Done (30 Oct 2026) | Decisions D1 (option B), D2, D4 and D5 taken. `make test`: 28 pass, 0 expected failures, 0 first-party warnings. 420 of 424 Phase 4 outputs byte-identical; the other 4 are `-c` with `-a` (D4, intended). Verified on GCC 13 / Linux; not yet on MinGW. |
+| 5.6 Release v2.0.0 | Not started | Tag and CHANGELOG; see "Phase 5 as built" for the user-visible changes. |
+| 6 Documentation | Partly done | The README entries for the Phase 5 behaviour are done (see the Phase 6 table); the rest is not started. |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -37,7 +39,7 @@ REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dea
 | **v1.0.1** | 0, 1 | Build fixes, tests, one-line and validation fixes | Yes |
 | **v1.1.0** | 2, 3 | Correct convolution and a correct colour / gamma pipeline | Yes (output changes are bug fixes) |
 | **v1.2.0** | 4 | Internal refactor: enums, static tables, error handling, speed | Yes |
-| **v2.0.0** | 5, 6 | Spec decisions (histogram mapping, PWM, alpha, per-operation palettes) and a README rewrite | Possibly not; see the open decisions |
+| **v2.0.0** | 5, 6 | Spec decisions (histogram mapping, PWM, one quantiser per run, `-a` for convolution) and a README rewrite | **No:** combining `-r`/`-e`/`-d`/`-t` is now an error, and `UNIFORM_HISTOGRAM`, `PWM` and `-c -a` produce different output. `JARVICE_JUDICE_NINKE` still works. |
 
 ---
 
@@ -373,10 +375,10 @@ None of these tasks should change any output. Prove that by comparing Phase 3 ou
 
 ---
 
-## Phase 5 — Spec decisions and features → **v2.0.0**
+## Phase 5 — Spec decisions and features → **v2.0.0** ✅
 
-### 5.1 `UNIFORM_HISTOGRAM` *(S5)* — decision **D1**
-- **Option A (rename):** rename the current behaviour to `RANGE_STRETCH`, keep `UNIFORM_HISTOGRAM` as a deprecated alias, and correct the README.
+### 5.1 `UNIFORM_HISTOGRAM` *(S5)* — decision **D1: Option B**
+- ~~**Option A (rename):** rename the current behaviour to `RANGE_STRETCH`, keep `UNIFORM_HISTOGRAM` as a deprecated alias, and correct the README.~~ Not chosen.
 - **Option B (implement what the README says):**
   1. Build the image's luminance CDF.
   2. Sort the palette by lightness.
@@ -387,17 +389,55 @@ None of these tasks should change any output. Prove that by comparing Phase 3 ou
 
   **Done when:** on `boat.png` with `TWILIGHT5`, each colour covers 20 ± 5% of the image.
 
-### 5.2 Per-operation palettes *(§2.3, point 2; S13)* — decision **D2**
-- The minimum change: if more than one of `-r`, `-e`, `-d` or `-t` is given, exit with an error saying only one quantising operation is allowed per run. Grayscale and convolve are pre-processing and can still be combined.
-- Alternatively, give each operation its own fields (`reduce_palette`, `ed_palette` and so on) and document the fixed order the operations run in.
+### 5.2 Per-operation palettes *(§2.3, point 2; S13)* — decision **D2: reject combinations**
+- **Chosen.** The minimum change: if more than one of `-r`, `-e`, `-d` or `-t` is given, exit with an error saying only one quantising operation is allowed per run. Grayscale and convolve are pre-processing and can still be combined.
+- ~~Alternatively, give each operation its own fields (`reduce_palette`, `ed_palette` and so on) and document the fixed order the operations run in.~~ Not chosen.
 
-### 5.3 Deterministic PWM *(Q4)*
-- For each pixel, set `k = round(duty · frames)`. The pixel shows the lighter colour in frames `[(phase + i) mod frames for i < k]`, where `phase` comes from a blue-noise matrix lookup (one of the built-in ones). Keep the old behaviour as `-t STOCHASTIC_PWM` if you want both.
+### 5.3 Deterministic PWM *(Q4)* — decision **D5: keep the stochastic version as `STOCHASTIC_PWM`**
+- For each pixel, set `k = round(duty · frames)`. The pixel shows the lighter colour in frames `[(phase + i) mod frames for i < k]`, where `phase` comes from a blue-noise matrix lookup (one of the built-in ones). Keep the old behaviour as `-t STOCHASTIC_PWM`.
 - Optionally choose the darker/lighter pair along the line through colour space between the two nearest palette colours, instead of by HSL lightness.
 - **Done when:** for each pixel, the number of frames showing the lighter colour is `round(duty·frames)`, and the measured flicker drops on `tulips.png` with `PWM,8`.
 
 ### 5.4 Naming
 - Accept `JARVIS_JUDICE_NINKE` and keep `JARVICE_JUDICE_NINKE` as an alias (S18).
+
+### 5.5 Gamma correction for convolution — decision **D4: yes**
+- **Files:** `src/dither.cpp`, `include/dither.h`, `src/main.cpp`, `src/cli.cpp`
+- With `-a`, `Dither::convolve` converts the source to linear float, convolves there, and encodes back with one rounding. Without `-a` the output is byte-identical to Phase 4.
+- **Done when:** averaging black and white with `-a` gives sRGB 188 (linear 50%), and 128 without `-a`.
+
+
+### Phase 5 as built (30 Oct 2026)
+**Output check:** 424 CLI runs on `boat.png` against the Phase 4 build (every error-diffusion kernel and scan pattern, six threshold matrices, reduce, with Euclidean and Manhattan mapping, four palettes including a CSV, every grayscale weighting, every convolution kernel, with and without `-a`). 420 are byte-identical. The other 4 combine `-c` with `-a`, which now convolves in linear light (D4, intended). In `outputs_unchanged`, only the `reduce UNIFORM_HISTOGRAM` hash changed, and it was updated on purpose.
+
+- **5.1 `UNIFORM_HISTOGRAM` (D1 option B, S5, B4 spec part):**
+  - It is now histogram equalisation onto the palette. The palette is sorted darkest to lightest. Each visible pixel gets a position `u = N · (pixels darker + half the pixels equal) / pixels` from the image's BT.709 luminance CDF (in working space, so `-a` uses linear light). Colour `k` covers `[k, k+1)`.
+  - `reduce` picks `floor(u)`. Error diffusion quantises `u` the same way and diffuses the error in `u` (one unit = one palette step), using the same loop as colour error diffusion (a `diffuse<V>` template). Ordered dithering adds the centred threshold to `u` (pitch exactly 1).
+  - An image with a single luminance has nothing to equalise, so it falls back to `EUCLIDEAN_DISTANCE` (keeps `uniform_hist_flat_channel`). Transparent pixels are left out of the histogram.
+  - The range stretch is removed: `Palette::RangeMap`, `range_map()`, `UNMAPPED` and the min/max in the working buffer are gone. `Palette::nearest_index` treats `UNIFORM_HISTOGRAM` as Euclidean.
+  - **Result on `boat.png` → `TWILIGHT5`:** every colour covers 19.5–20.5% for reduce, Floyd–Steinberg, Jarvis–Judice–Ninke, `BAYER_8X8` and `BLUE_NOISE_64X64`, with and without `-a` (target 20 ± 5%). Euclidean gives 44 / 21 / 16 / 12 / 7.5%.
+  - Hue no longer affects the choice of colour (it is a luminance-rank mapping). The README says so.
+- **5.2 One quantiser per run (D2, §2.3 point 2, S13):** `CLI::parse` rejects more than one of `-r`, `-e`, `-d` and `-t` with *"Only one of -r, -e, -d and -t can be used per run (-g and -c can be combined with any of them)"*, before the image is loaded. The README Usage section documents this and the fixed order.
+- **5.3 Deterministic PWM (D5, Q4, S20):**
+  - New `TemporalMethod::STOCHASTIC_PWM` keeps the v1 behaviour (a random draw per frame).
+  - `PWM` now shows the lighter colour in exactly `k = round(duty · frames)` consecutive frames (wrapping), starting at a phase from `BLUE_NOISE_64X64`: `phase = floor((centred threshold + 0.5) · frames)`. Output is the same on every run.
+  - The darker/lighter pair is still chosen by HSL lightness. The optional "line through colour space" idea was not done.
+  - **Result on `tulips.png` → `SLSO8`, 8 frames:** local flicker (temporal standard deviation of 4×4 block luma) drops from 2.55 to 1.51, and the frame-to-frame standard deviation of the mean luma from 0.013 to 0.007. With `TWILIGHT5` and 4 frames: 2.80 → 1.86 and 0.032 → 0.008.
+- **5.4 Naming (S18):** the preset is `JARVIS_JUDICE_NINKE`; `JARVICE_JUDICE_NINKE` is an alias. `has_preset` accepts both, `preset_names()` lists only the canonical name, and `ErrorDiffusion::name` holds the canonical name.
+- **5.5 `-a` for convolution (D4, S11):** `Dither::convolve(kernel, gamma_correction)` samples linear float values with `-a` and encodes back once with `Transfer::to_encoded` (rounding, clamped). Without `-a` the output is byte-identical to Phase 4. The `-a` help text lists the operations it applies to.
+- **Tests:** 5 new tests, each mutation-checked (disabling the feature makes it fail):
+  - `uniform_hist_equal_shares` — a skewed (mostly dark) image gives 20 ± 3% per `TWILIGHT5` colour for reduce, raster and serpentine error diffusion, and ordered, with and without `-a`; the darkest/lightest pixel gets the darkest/lightest colour;
+  - `cli_one_quantiser` — 5 combinations rejected with the message; 6 valid runs (including `-g -c -e` and `-a -c -d`) accepted;
+  - `pwm_deterministic` — every pixel has exactly `round(duty · 8)` lighter frames, each frame is 25 ± 2% lighter, two runs are identical, and `STOCHASTIC_PWM` keeps the right mean but varies per pixel;
+  - `jarvis_alias`;
+  - `convolve_linear_light` — averaging black and white gives 188 with `-a` and 128 without.
+  - `make test`: 28 pass, 0 expected failures, under 1 s. A clean build gives 0 first-party warnings.
+- **Speed:** unchanged for the other mapping methods. `UNIFORM_HISTOGRAM` error diffusion on `boat.png` takes about 80 ms for the whole run.
+- **README:** updated for the Phase 5 behaviour only (Usage, the `-a` row, `JARVIS_JUDICE_NINKE`, the temporal methods table, `UNIFORM_HISTOGRAM`). The rest of Phase 6 is still to do.
+- **Not done:** checking the MinGW build. Please run `make clean && make test` on Windows once.
+
+### 5.6 Release v2.0.0
+- Tag the release. CHANGELOG: combining quantisers is an error; `UNIFORM_HISTOGRAM` is now histogram equalisation; `PWM` is deterministic and the old behaviour is `STOCHASTIC_PWM`; `-a` applies to `-c`; `JARVIS_JUDICE_NINKE` spelling.
 
 ---
 
@@ -411,13 +451,15 @@ These are README edits. They can be done at any time, but should match each rele
 | S4 | Add `-o OUTPUT_FILE_PATH` to the temporal syntax line |
 | S7, S8 | Document the BT.709-weighted Euclidean distance and describe Manhattan as L1. Consider an optional `UNWEIGHTED_EUCLIDEAN` |
 | S10 | Correct the 8×8 Bayer claim (64 levels; 16×16 has all 256) |
-| S11 | Define `-a` as "process in linear light", and list which operations use it |
-| S13 | Document the fixed order operations run in, and the D2 outcome |
+| S11 | Define `-a` as "process in linear light", and list which operations use it. ✅ *The CLI table row is done (Phase 5); a short explanation section is still to do.* |
+| S13 | ✅ Document the fixed order operations run in, and the D2 outcome *(done in Phase 5)* |
 | S14, S15 | Fix the "threshold matrixes" and "convolution kernels" copy-paste wording |
 | S16 | Finish the "Why use Dither" list (temporal dithering, serpentine scanning, blue noise, Lospec CSVs) |
 | S17 | State the minimum GCC version (13+; 0.1 has landed) |
 | 4.4 | CSV formats: blank lines and Windows line endings are fine; threshold values must be whole numbers 0–255; grayscale weights are one row of three values |
-| S20 | Describe PWM accurately (after 5.3) |
+| S18 | ✅ Use the `JARVIS_JUDICE_NINKE` spelling and mention the alias *(done in Phase 5)* |
+| S5 | ✅ Describe `UNIFORM_HISTOGRAM` as histogram equalisation *(done in Phase 5)* |
+| S20 | ✅ Describe PWM accurately, and `STOCHASTIC_PWM` *(done in Phase 5)* |
 | Q11 | Describe the `-b` output: `load`, each operation, `save`, `processing` and `total`, printed after a successful save |
 | — | Add a "Testing" section (`make test`, `XFAIL`/`TEST`, `-v`) and a CHANGELOG link |
 
@@ -427,11 +469,11 @@ These are README edits. They can be done at any time, but should match each rele
 
 | # | Decision | Recommendation |
 |---|---|---|
-| **D1** | `UNIFORM_HISTOGRAM`: rename to match the code, or implement true histogram mapping? | Do Option A in v1.0.1 (a doc fix), and Option B in v2.0.0. |
-| **D2** | Allow combining quantising operations? | Reject combinations (one error message, simplest). Combining two quantisers rarely makes sense. |
+| **D1** | `UNIFORM_HISTOGRAM`: rename to match the code, or implement true histogram mapping? | ✅ **Decided (30 Oct 2026): Option B.** Implement true histogram mapping in 5.1; the range stretch is replaced, not kept under another name. |
+| **D2** | Allow combining quantising operations? | ✅ **Decided (30 Oct 2026): reject combinations.** More than one of `-r`, `-e`, `-d`, `-t` is an error; `-g` and `-c` can still be combined with any of them (5.2). |
 | **D3** | Alpha handling | ✅ **Decided and implemented in Phase 3:** transparent pixels pass through unchanged, and alpha is kept on output. |
-| **D4** | Should `-a` also apply to `-c`? | Yes, after Phase 3. Blurring in linear light looks more correct. |
-| **D5** | Keep the stochastic PWM? | Keep it under a new name; make the deterministic version the default `PWM`. |
+| **D4** | Should `-a` also apply to `-c`? | ✅ **Decided (30 Oct 2026): yes.** With `-a`, convolution runs in linear light (5.5). |
+| **D5** | Keep the stochastic PWM? | ✅ **Decided (30 Oct 2026):** keep it as `STOCHASTIC_PWM`; the new deterministic version is the default `PWM` (5.3). |
 
 ---
 
@@ -448,7 +490,7 @@ These are README edits. They can be done at any time, but should match each rele
 | 7 | ~~2.1 Convolution (B2)~~ ✅ | M |
 | 8 | ~~3.1–3.4 Float pipeline, gamma, threshold centring, alpha (B3, Q1, Q2, Q3, Q6)~~ ✅ | L |
 | 9 | ~~4.1–4.6 Refactor~~ ✅ | L |
-| 10 | 5.x Spec decisions | M–L |
+| 10 | ~~5.x Spec decisions~~ ✅ | M–L |
 | — | 6 Docs | S, done alongside each release |
 
 XS = under 30 min · S = about 1–2 h · M = half a day · L = 1–2 days

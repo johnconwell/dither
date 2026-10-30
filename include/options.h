@@ -24,7 +24,11 @@ enum class ScanPattern
 
 enum class TemporalMethod
 {
+    // deterministic: each pixel shows the lighter colour in exactly round(duty * frames) frames,
+    // starting at a blue-noise phase (ROADMAP 5.3, D5)
     PWM,
+    // the v1 behaviour: each frame draws a random number against the duty cycle
+    STOCHASTIC_PWM,
     RANDOM,
 };
 
@@ -61,8 +65,9 @@ struct EnumNames<ScanPattern>
 template <>
 struct EnumNames<TemporalMethod>
 {
-    static constexpr std::array<EnumName<TemporalMethod>, 2> values = {{
+    static constexpr std::array<EnumName<TemporalMethod>, 3> values = {{
         {"PWM", TemporalMethod::PWM},
+        {"STOCHASTIC_PWM", TemporalMethod::STOCHASTIC_PWM},
         {"RANDOM", TemporalMethod::RANDOM},
     }};
 };

@@ -770,8 +770,8 @@ TEST(uniform_hist_order_independent)
               "[200, 100] should mirror [100, 200], got " + down.image.get_pixel(0, 0).to_string_hex() + " " + down.image.get_pixel(1, 0).to_string_hex());
 }
 
-// A solid image has no range to stretch, so UNIFORM_HISTOGRAM should behave like
-// plain nearest-colour mapping instead of dividing by zero.
+// A solid image has no histogram to equalise, so UNIFORM_HISTOGRAM should behave like
+// plain nearest-colour mapping instead of forcing one palette rank.
 TEST(uniform_hist_flat_channel)
 {
     const fs::path p = write_png("solid.png", 4, 4, [](unsigned, unsigned) { return RGBA{100, 150, 200, 255}; });
@@ -970,7 +970,8 @@ TEST(outputs_unchanged)
         {"convolve emboss.csv", 0x72d65f5f59b587d2ull},
         {"reduce EUCLIDEAN", 0x15c83a4b4cdbf506ull},
         {"reduce MANHATTAN", 0x4b8e67d05202b89dull},
-        {"reduce UNIFORM_HISTOGRAM", 0x0d8fc0f3df2a7cceull},
+        // changed on purpose in Phase 5.1 (histogram mapping replaced the range stretch)
+        {"reduce UNIFORM_HISTOGRAM", 0xa710f4065bafc0caull},
         {"error_diffusion LINEAR RASTER", 0xffad6746f1a4afd1ull},
         {"error_diffusion LINEAR SERPENTINE", 0x87ca40a270529c5bull},
         {"error_diffusion FLOYD_STEINBERG RASTER", 0xcd64152ebe0a6411ull},
@@ -1210,6 +1211,218 @@ TEST(benchmark_report)
     const RunResult failed = run_dither("-i " + in + " -o " + quote((TMP_DIR / "no_such_dir" / "out.png").string()) + " -g BT709 -b");
     CHECK_MSG(failed.exit_code != 0, "saving into a missing folder should fail");
     CHECK_MSG(failed.output.find("total:") == std::string::npos, "a time was printed although saving failed: " + failed.output);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 (spec decisions) tests
+// ---------------------------------------------------------------------------
+
+// 5.1 (D1 option B): UNIFORM_HISTOGRAM equalises the image's luminance histogram onto the
+// palette, so each colour covers about 1/N of the image even when the image is mostly dark.
+// Checked for reduce, error diffusion (both scan patterns) and ordered, with and without -a.
+TEST(uniform_hist_equal_shares)
+{
+    // a skewed histogram: luma ~ t^3, so most pixels are dark
+    const unsigned W = 96, H = 64;
+    const fs::path p = write_png("uh_skewed.png", W, H, [](unsigned x, unsigned y) {
+        const double t = (static_cast<double>(y * W + x) + 0.5) / static_cast<double>(W * H);
+        const unsigned char v = static_cast<unsigned char>(std::lround(255.0 * t * t * t));
+        return RGBA{v, static_cast<unsigned char>(v / 2 + 40), static_cast<unsigned char>(255 - v / 3), 255};
+    });
+    const Palette palette("TWILIGHT5");
+
+    const std::vector<std::pair<std::string, std::function<void(Dither&, bool)>>> ops = {
+        {"reduce", [](Dither& d, bool a) { d.reduce(MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", a); }},
+        {"error_diffusion raster", [](Dither& d, bool a) { d.error_diffusion("FLOYD_STEINBERG", ScanPattern::RASTER, MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", a); }},
+        {"error_diffusion serpentine", [](Dither& d, bool a) { d.error_diffusion("JARVIS_JUDICE_NINKE", ScanPattern::SERPENTINE, MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", a); }},
+        {"ordered", [](Dither& d, bool a) { d.ordered("BAYER_8X8", MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", a); }},
+    };
+
+    for(const auto& [label, op] : ops)
+    {
+        for(const bool gamma : {false, true})
+        {
+            Dither d = load(p);
+            op(d, gamma);
+
+            for(std::size_t k = 0; k < palette.size(); k++)
+            {
+                const double share = fraction_of(d, palette.get_color_at(k));
+                CHECK_MSG(std::fabs(share - 0.2) <= 0.03, label + (gamma ? " -a" : "") + ": " + palette.get_color_at(k).to_string_hex() + " covers " + std::to_string(share * 100.0) + "%, expected 20 +/- 3%");
+            }
+        }
+    }
+
+    // the order follows luminance: the darkest pixel gets the darkest colour, the lightest the lightest
+    Dither d = load(p);
+    d.reduce(MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", false);
+    CHECK(same_rgb(d.image.get_pixel(0, 0), Color(0x292831)));
+    CHECK(same_rgb(d.image.get_pixel(W - 1, H - 1), Color(0xfbbbad)));
+}
+
+// 5.2 (D2): only one of -r, -e, -d and -t per run; -g and -c still combine with any of them.
+TEST(cli_one_quantiser)
+{
+    if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
+    {
+        CHECK_MSG(false, "dither binary not found: '" + g_dither_binary + "'");
+        return;
+    }
+
+    const std::string in = quote(write_png("cli_q_in.png", 8, 8, [](unsigned x, unsigned y) {
+        const unsigned char v = static_cast<unsigned char>((x + y) * 16); return RGBA{v, v, v, 255};
+    }).string());
+    const std::string out = quote(tmp_path("cli_q_out.png").string());
+    const std::string r = " -r EUCLIDEAN_DISTANCE,TWILIGHT5";
+    const std::string e = " -e FLOYD_STEINBERG,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5";
+    const std::string d = " -d BAYER_4X4,EUCLIDEAN_DISTANCE,TWILIGHT5";
+    const std::string t = " -t PWM,2,EUCLIDEAN_DISTANCE,TWILIGHT5";
+
+    for(const std::string& combination : {r + e, r + d, e + d, d + t, r + e + d + t})
+    {
+        const RunResult result = run_dither("-i " + in + " -o " + out + combination);
+        CHECK_MSG(!result.crashed && result.exit_code != 0, "accepted" + combination);
+        CHECK_MSG(result.output.find("Only one of") != std::string::npos, "no clear message for" + combination + ": " + first_line(result.output));
+    }
+
+    for(const std::string& single : {r, e, d, t, " -g BT709 -c BOX_BLUR" + e, " -a -c BOX_BLUR" + d})
+    {
+        const RunResult result = run_dither("-i " + in + " -o " + out + single);
+        CHECK_MSG(!result.crashed && result.exit_code == 0, "rejected" + single + ": " + first_line(result.output));
+    }
+}
+
+// 5.3 (D5): PWM is deterministic. Each pixel shows the lighter colour in exactly
+// round(duty * frames) frames, and the blue-noise phases spread those frames evenly, so every
+// frame has the same share of lighter pixels (no global flicker).
+TEST(pwm_deterministic)
+{
+    const unsigned W = 64, H = 64;
+    const std::size_t FRAMES = 8;
+    const fs::path p = write_png("pwm_grey.png", W, H, [](unsigned, unsigned) { return RGBA{64, 64, 64, 255}; });
+    const std::string bw = write_text("pwm_bw.csv", "bw,tester,000000,ffffff\n").string();
+    // grey 64 on a black-white palette: duty = 64 / 255, so round(0.251 * 8) = 2 lighter frames
+    const std::size_t expected_lighter = 2;
+
+    auto lighter_counts = [&](Dither& d) {
+        std::vector<std::size_t> per_pixel(W * H, 0);
+        std::vector<std::size_t> per_frame(FRAMES, 0);
+
+        for(std::size_t frame = 0; frame < d.image.get_frames(); frame++)
+        {
+            for(unsigned y = 0; y < H; y++)
+            {
+                for(unsigned x = 0; x < W; x++)
+                {
+                    if(same_rgb(d.image.get_pixel(x, y, frame), Color(0xffffff)))
+                    {
+                        per_pixel[y * W + x]++;
+                        per_frame[frame]++;
+                    }
+                }
+            }
+        }
+
+        return std::make_pair(per_pixel, per_frame);
+    };
+
+    for(const bool gamma : {false, true})
+    {
+        Dither d = load(p);
+        d.temporal(TemporalMethod::PWM, FRAMES, MappingMethod::EUCLIDEAN_DISTANCE, bw, gamma);
+        CHECK(d.image.get_frames() == FRAMES);
+        const auto [per_pixel, per_frame] = lighter_counts(d);
+        // with -a the grey is 5.1% linear light, so round(0.051 * 8) = 0 lighter frames
+        const std::size_t want = gamma ? 0 : expected_lighter;
+        const auto wrong = std::count_if(per_pixel.begin(), per_pixel.end(), [&](std::size_t n) { return n != want; });
+        CHECK_MSG(wrong == 0, std::string(gamma ? "-a: " : "") + std::to_string(wrong) + " pixels do not have exactly " + std::to_string(want) + " lighter frames");
+
+        if(!gamma)
+        {
+            for(std::size_t frame = 0; frame < FRAMES; frame++)
+            {
+                const double share = static_cast<double>(per_frame[frame]) / (W * H);
+                CHECK_MSG(std::fabs(share - 0.25) <= 0.02, "frame " + std::to_string(frame) + " is " + std::to_string(share * 100.0) + "% lighter, expected 25 +/- 2%");
+            }
+        }
+    }
+
+    // two runs give the same frames
+    Dither a = load(p);
+    Dither b = load(p);
+    a.temporal(TemporalMethod::PWM, FRAMES, MappingMethod::EUCLIDEAN_DISTANCE, bw, false);
+    b.temporal(TemporalMethod::PWM, FRAMES, MappingMethod::EUCLIDEAN_DISTANCE, bw, false);
+    bool identical = true;
+
+    for(std::size_t frame = 0; frame < FRAMES; frame++)
+    {
+        for(unsigned y = 0; y < H; y++)
+        {
+            for(unsigned x = 0; x < W; x++)
+            {
+                identical = identical && same_rgb(a.image.get_pixel(x, y, frame), b.image.get_pixel(x, y, frame));
+            }
+        }
+    }
+
+    CHECK_MSG(identical, "PWM gave different frames on two runs");
+
+    // the v1 behaviour is still available as STOCHASTIC_PWM: about the same average, but the per-pixel count varies
+    Dither s = load(p);
+    s.temporal(TemporalMethod::STOCHASTIC_PWM, FRAMES, MappingMethod::EUCLIDEAN_DISTANCE, bw, false);
+    const auto [per_pixel, per_frame] = lighter_counts(s);
+    double mean = 0.0;
+
+    for(const std::size_t n : per_pixel)
+    {
+        mean += static_cast<double>(n);
+    }
+
+    mean /= static_cast<double>(per_pixel.size());
+    CHECK_NEAR(mean, 64.0 / 255.0 * FRAMES, 0.15);
+    CHECK_MSG(std::any_of(per_pixel.begin(), per_pixel.end(), [&](std::size_t n) { return n != expected_lighter; }), "STOCHASTIC_PWM should vary per pixel");
+}
+
+// 5.4 (S18): the algorithm is Jarvis-Judice-Ninke; the old spelling is still accepted.
+TEST(jarvis_alias)
+{
+    CHECK(ErrorDiffusion::has_preset("JARVIS_JUDICE_NINKE"));
+    CHECK(ErrorDiffusion::has_preset("JARVICE_JUDICE_NINKE"));
+
+    const ErrorDiffusion alias("JARVICE_JUDICE_NINKE");
+    const ErrorDiffusion canonical("JARVIS_JUDICE_NINKE");
+    CHECK(alias.name == "JARVIS_JUDICE_NINKE");
+    CHECK(alias.taps.size() == canonical.taps.size() && std::equal(alias.taps.begin(), alias.taps.end(), canonical.taps.begin(), [](const ErrorDiffusion::Tap& a, const ErrorDiffusion::Tap& b) {
+        return a.dx == b.dx && a.dy == b.dy && a.scalar == b.scalar;
+    }));
+
+    const std::vector<std::string> names = ErrorDiffusion::preset_names();
+    CHECK(std::find(names.begin(), names.end(), "JARVIS_JUDICE_NINKE") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "JARVICE_JUDICE_NINKE") == names.end());
+}
+
+// 5.5 (D4): with -a, convolution runs in linear light. Averaging black and white gives 50%
+// linear light (sRGB 188); without -a it gives the sRGB midpoint (128).
+TEST(convolve_linear_light)
+{
+    const unsigned W = 8, H = 2;
+    const fs::path p = write_png("convolve_stripes.png", W, H, [](unsigned x, unsigned) {
+        const unsigned char v = x % 2 == 0 ? 0 : 255; return RGBA{v, v, v, 255};
+    });
+    const std::string average = write_text("average_1x2.csv", "0.5,0.5\n").string();
+
+    for(const bool gamma : {false, true})
+    {
+        Dither d = load(p);
+        d.convolve(average, gamma);
+        const int expected = gamma ? 188 : 128;
+
+        for(unsigned x = 1; x + 1 < W; x++)
+        {
+            const Color c = d.image.get_pixel(x, 0);
+            CHECK_MSG(c.r == expected && c.g == expected && c.b == expected, std::string(gamma ? "-a" : "no -a") + ": pixel " + std::to_string(x) + " is " + c.to_string_hex() + ", expected " + std::to_string(expected));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
