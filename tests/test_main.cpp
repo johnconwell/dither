@@ -8,12 +8,14 @@
 // from REVIEW.md. When a fix lands, that test starts passing and the runner reports
 // it as XPASS (and fails the run) until you change XFAIL to TEST below.
 //
-// The library tests call the Dither / Palette / Ordered APIs directly. The CLI tests
-// run the real dither binary as a child process, so a crash or std::exit there
-// can't take the runner down with it.
+// The library tests call the Dither / Palette / Ordered APIs directly; library errors
+// are DitherError exceptions. The CLI tests run the real dither binary as a child
+// process, so a crash there can't take the runner down with it.
 
 #include "convolve.h"
+#include "csv.h"
 #include "dither.h"
+#include "error.h"
 #include "error_diffusion.h"
 #include "grayscale.h"
 #include "lodepng.h"
@@ -180,9 +182,13 @@ namespace
     {
         Dither d;
 
-        if(d.load(p.string().c_str()))
+        try
         {
-            std::cerr << "could not load " << p << std::endl;
+            d.load(p.string());
+        }
+        catch(const DitherError& e)
+        {
+            std::cerr << "could not load " << p << ": " << e.what() << std::endl;
             std::exit(2);
         }
 
@@ -205,7 +211,7 @@ namespace
         {
             for(std::size_t x = 0; x < w; x++)
             {
-                n += same_rgb(d.image.get_pixel(static_cast<unsigned>(x), static_cast<unsigned>(y)), c) ? 1 : 0;
+                n += same_rgb(d.image.get_pixel(x, y), c) ? 1u : 0u;
             }
         }
 
@@ -355,7 +361,7 @@ TEST(ordered_grey_coverage)
         const fs::path p = write_png("grey_" + std::to_string(static_cast<int>(level * 100)) + ".png", 64, 64, [&](unsigned, unsigned) { return grey; });
 
         Dither d = load(p);
-        d.ordered("BAYER_8X8", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+        d.ordered("BAYER_8X8", MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", false);
         const double got = fraction_of(d, light);
         CHECK_MSG(std::fabs(got - level) <= 0.02, std::to_string(static_cast<int>(level * 100)) + "% grey gave " + std::to_string(got) + " light, expected " + std::to_string(level) + " +/- 0.02");
     }
@@ -507,11 +513,11 @@ TEST(gamma_linear_coverage)
     }
 
     Dither ed = load(boat);
-    ed.error_diffusion("FLOYD_STEINBERG", "RASTER", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", true);
+    ed.error_diffusion("FLOYD_STEINBERG", ScanPattern::RASTER, MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", true);
     CHECK_NEAR(fraction_of(ed, Color(0xf0f6f0)), 0.273, 0.02);
 
     Dither od = load(boat);
-    od.ordered("BAYER_8X8", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", true);
+    od.ordered("BAYER_8X8", MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", true);
     CHECK_NEAR(fraction_of(od, Color(0xf0f6f0)), 0.273, 0.02);
 }
 
@@ -613,13 +619,7 @@ TEST(grayscale_linear_levels)
 TEST(ordered_all_matrices_coverage)
 {
     const Color dark(0x222323), light(0xf0f6f0);
-    std::vector<std::string> names;
-
-    for(const auto& entry : Ordered("BAYER_2X2").THRESHOLD_MATRIXES)
-    {
-        names.push_back(entry.first);
-    }
-
+    std::vector<std::string> names = Ordered::preset_names();
     std::sort(names.begin(), names.end());
 
     for(const double level : {0.25, 0.50, 0.75})
@@ -631,7 +631,7 @@ TEST(ordered_all_matrices_coverage)
         for(const std::string& name : names)
         {
             Dither d = load(p);
-            d.ordered(name, "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+            d.ordered(name, MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", false);
             const double got = fraction_of(d, light);
             CHECK_MSG(std::fabs(got - level) <= 0.02, name + ": " + std::to_string(static_cast<int>(level * 100)) + "% grey gave " + std::to_string(got) + " light");
         }
@@ -655,7 +655,7 @@ TEST(ordered_all_matrices_coverage)
         for(const fs::path& p : ramp)
         {
             Dither d = load(p);
-            d.ordered(name, "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+            d.ordered(name, MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", false);
             total += fraction_of(d, light);
         }
 
@@ -678,7 +678,7 @@ TEST(error_diffusion_keeps_small_error)
         const double actual = (0.2126 * (grey.r - dark.r) + 0.7152 * (grey.g - dark.g) + 0.0722 * (grey.b - dark.b)) /
                               (0.2126 * (light.r - dark.r) + 0.7152 * (light.g - dark.g) + 0.0722 * (light.b - dark.b));
         Dither d = load(write_png("grey_ed_" + std::to_string(static_cast<int>(level * 100)) + ".png", 128, 128, [&](unsigned, unsigned) { return grey; }));
-        d.error_diffusion("FLOYD_STEINBERG", "RASTER", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+        d.error_diffusion("FLOYD_STEINBERG", ScanPattern::RASTER, MappingMethod::EUCLIDEAN_DISTANCE, "1BIT_MONITOR_GLOW", false);
         CHECK_NEAR(fraction_of(d, light), actual, 0.003);
     }
 }
@@ -703,10 +703,10 @@ TEST(alpha_preserved)
     const fs::path white = write_png("alpha_white.png", W, H, image_with(255));
 
     const std::vector<std::pair<std::string, std::function<void(Dither&)>>> ops = {
-        {"reduce", [](Dither& d) { d.reduce("EUCLIDEAN_DISTANCE", "SLSO8", false); }},
-        {"error_diffusion", [](Dither& d) { d.error_diffusion("FLOYD_STEINBERG", "SERPENTINE", "EUCLIDEAN_DISTANCE", "SLSO8", true); }},
-        {"ordered", [](Dither& d) { d.ordered("BAYER_4X4", "EUCLIDEAN_DISTANCE", "SLSO8", false); }},
-        {"temporal", [](Dither& d) { d.temporal("RANDOM", 3, "EUCLIDEAN_DISTANCE", "SLSO8", false); }},
+        {"reduce", [](Dither& d) { d.reduce(MappingMethod::EUCLIDEAN_DISTANCE, "SLSO8", false); }},
+        {"error_diffusion", [](Dither& d) { d.error_diffusion("FLOYD_STEINBERG", ScanPattern::SERPENTINE, MappingMethod::EUCLIDEAN_DISTANCE, "SLSO8", true); }},
+        {"ordered", [](Dither& d) { d.ordered("BAYER_4X4", MappingMethod::EUCLIDEAN_DISTANCE, "SLSO8", false); }},
+        {"temporal", [](Dither& d) { d.temporal(TemporalMethod::RANDOM, 3, MappingMethod::EUCLIDEAN_DISTANCE, "SLSO8", false); }},
     };
 
     for(const auto& [label, op] : ops)
@@ -762,8 +762,8 @@ TEST(uniform_hist_order_independent)
     };
     Dither up = load(write_png("uh_up.png", 2, 1, two(100, 200)));
     Dither down = load(write_png("uh_down.png", 2, 1, two(200, 100)));
-    up.reduce("UNIFORM_HISTOGRAM", "1BIT_MONITOR_GLOW", false);
-    down.reduce("UNIFORM_HISTOGRAM", "1BIT_MONITOR_GLOW", false);
+    up.reduce(MappingMethod::UNIFORM_HISTOGRAM, "1BIT_MONITOR_GLOW", false);
+    down.reduce(MappingMethod::UNIFORM_HISTOGRAM, "1BIT_MONITOR_GLOW", false);
 
     CHECK_MSG(!same_rgb(up.image.get_pixel(0, 0), up.image.get_pixel(1, 0)), "[100, 200] should map to two different colours, got " + up.image.get_pixel(0, 0).to_string_hex() + " " + up.image.get_pixel(1, 0).to_string_hex());
     CHECK_MSG(same_rgb(up.image.get_pixel(0, 0), down.image.get_pixel(1, 0)) && same_rgb(up.image.get_pixel(1, 0), down.image.get_pixel(0, 0)),
@@ -777,8 +777,8 @@ TEST(uniform_hist_flat_channel)
     const fs::path p = write_png("solid.png", 4, 4, [](unsigned, unsigned) { return RGBA{100, 150, 200, 255}; });
     Dither uh = load(p);
     Dither eu = load(p);
-    uh.reduce("UNIFORM_HISTOGRAM", "TWILIGHT5", false);
-    eu.reduce("EUCLIDEAN_DISTANCE", "TWILIGHT5", false);
+    uh.reduce(MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", false);
+    eu.reduce(MappingMethod::EUCLIDEAN_DISTANCE, "TWILIGHT5", false);
     CHECK_MSG(same_rgb(uh.image.get_pixel(0, 0), eu.image.get_pixel(0, 0)),
               "UNIFORM_HISTOGRAM gave " + uh.image.get_pixel(0, 0).to_string_hex() + ", EUCLIDEAN_DISTANCE gave " + eu.image.get_pixel(0, 0).to_string_hex());
 }
@@ -786,12 +786,6 @@ TEST(uniform_hist_flat_channel)
 // Every preset name in the README tables must exist in the matching built-in table.
 TEST(preset_names_resolve)
 {
-    const Grayscale gray("STANDARD");
-    const Convolve conv("BOX_BLUR");
-    const ErrorDiffusion ed("LINEAR");
-    const Ordered ord("BAYER_2X2");
-    const Palette pal("TWILIGHT5");
-
     struct Section
     {
         std::string heading;
@@ -799,11 +793,11 @@ TEST(preset_names_resolve)
     };
 
     const std::vector<Section> sections = {
-        {"### Grayscale Channel Weights", [&](const std::string& n) { return gray.METHODS.contains(n); }},
-        {"### Convolution Kernels", [&](const std::string& n) { return conv.KERNELS.contains(n); }},
-        {"### Error Diffusion Algorithms", [&](const std::string& n) { return ed.COORDINATES.contains(n) && ed.SCALARS.contains(n); }},
-        {"### Ordered Threshold Matrixes", [&](const std::string& n) { return ord.THRESHOLD_MATRIXES.contains(n); }},
-        {"### Palettes", [&](const std::string& n) { return pal.PRESET_PALETTES.contains(n); }},
+        {"### Grayscale Channel Weights", [](const std::string& n) { return Grayscale::has_preset(n); }},
+        {"### Convolution Kernels", [](const std::string& n) { return Convolve::has_preset(n); }},
+        {"### Error Diffusion Algorithms", [](const std::string& n) { return ErrorDiffusion::has_preset(n); }},
+        {"### Ordered Threshold Matrixes", [](const std::string& n) { return Ordered::has_preset(n); }},
+        {"### Palettes", [](const std::string& n) { return Palette::has_preset(n); }},
     };
 
     for(const auto& s : sections)
@@ -821,7 +815,6 @@ TEST(preset_names_resolve)
 // Every built-in threshold matrix should equal its CSV in data/threshold_matrixes/.
 TEST(presets_match_csv)
 {
-    const Ordered presets("BAYER_2X2");
     const fs::path dir = fs::path("data") / "threshold_matrixes";
     std::set<std::string> seen;
 
@@ -835,45 +828,44 @@ TEST(presets_match_csv)
         const std::string name = to_upper(entry.path().stem().string());
         seen.insert(name);
 
-        if(!presets.THRESHOLD_MATRIXES.contains(name))
+        if(!Ordered::has_preset(name))
         {
             CHECK_MSG(false, name + ": CSV exists but there is no built-in preset with that name");
             continue;
         }
 
         const Ordered from_csv(entry.path().string());
-        CHECK_MSG(from_csv.threshold_matrix == presets.THRESHOLD_MATRIXES.at(name), name + ": built-in values differ from " + entry.path().filename().string());
+        CHECK_MSG(from_csv.threshold_matrix == Ordered(name).threshold_matrix, name + ": built-in values differ from " + entry.path().filename().string());
     }
 
-    for(const auto& [name, _] : presets.THRESHOLD_MATRIXES)
+    for(const std::string& name : Ordered::preset_names())
     {
         CHECK_MSG(seen.contains(name), name + ": built-in preset has no CSV in data/threshold_matrixes/");
     }
 }
 
-// Each kernel must have a scalar for every offset, and the scalars must sum to 1
-// (Atkinson deliberately diffuses only 3/4 of the error).
+// Each kernel must only push error forward (to pixels not yet visited), use each offset
+// once, and its scalars must sum to 1 (Atkinson deliberately diffuses only 3/4 of the error).
 TEST(ed_kernel_sums)
 {
-    const ErrorDiffusion ed("LINEAR");
+    const std::vector<std::string> names = ErrorDiffusion::preset_names();
+    CHECK(names.size() == 9);
 
-    for(const auto& [name, coords] : ed.COORDINATES)
+    for(const std::string& name : names)
     {
-        CHECK_MSG(ed.SCALARS.contains(name), name + ": no scalars");
-
-        if(!ed.SCALARS.contains(name))
-        {
-            continue;
-        }
-
-        const auto& scalars = ed.SCALARS.at(name);
-        CHECK_MSG(scalars.size() == coords.size(), name + ": coordinate count != scalar count");
+        const ErrorDiffusion ed(name);
+        std::set<std::pair<int, int>> offsets;
         double sum = 0.0;
 
-        for(const auto& c : coords)
+        CHECK_MSG(!ed.taps.empty(), name + ": no taps");
+
+        for(const ErrorDiffusion::Tap& tap : ed.taps)
         {
-            CHECK_MSG(scalars.contains(c), name + ": offset (" + std::to_string(c.first) + "," + std::to_string(c.second) + ") has no scalar");
-            sum += scalars.contains(c) ? scalars.at(c) : 0.0;
+            const std::string where = name + ": offset (" + std::to_string(tap.dx) + "," + std::to_string(tap.dy) + ")";
+            CHECK_MSG(tap.dy > 0 || (tap.dy == 0 && tap.dx > 0), where + " points at a pixel that has already been visited");
+            CHECK_MSG(offsets.insert({tap.dx, tap.dy}).second, where + " is listed twice");
+            CHECK_MSG(tap.scalar > 0.0, where + " has a non-positive scalar");
+            sum += tap.scalar;
         }
 
         const double expected = (name == "ATKINSON") ? 0.75 : 1.0;
@@ -955,6 +947,272 @@ TEST(cli_rejects_bad_input)
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4 (internal refactor) tests
+// ---------------------------------------------------------------------------
+
+// Phase 4 must not change any output. These hashes of the pixel data (FNV-1a over RGBA,
+// row by row) were taken from the Phase 3 build, which was also compared byte for byte
+// against Phase 4 on 885 CLI runs. Gamma correction (-a) and temporal dithering are left
+// out: -a goes through std::pow, whose last bit can differ between C libraries, and
+// temporal output is random. If you change an output on purpose, update its hash here
+// (the failure message prints the new value).
+TEST(outputs_unchanged)
+{
+    const fs::path p = write_png("golden.png", 64, 48, [](unsigned x, unsigned y) {
+        return RGBA{static_cast<unsigned char>(x * 4 % 256), static_cast<unsigned char>(y * 5 % 256), static_cast<unsigned char>((x * y) % 256),
+                    static_cast<unsigned char>((x + y) % 9 == 0 ? 0 : 255)};
+    });
+
+    const std::vector<std::pair<std::string, unsigned long long>> expected = {
+        {"grayscale BT709", 0xbc1a9e46d367ad0cull},
+        {"grayscale STANDARD", 0xcaa70ebe13981cc7ull},
+        {"convolve GAUSSIAN_BLUR", 0xee9d9cf10cf06720ull},
+        {"convolve emboss.csv", 0x72d65f5f59b587d2ull},
+        {"reduce EUCLIDEAN", 0x15c83a4b4cdbf506ull},
+        {"reduce MANHATTAN", 0x4b8e67d05202b89dull},
+        {"reduce UNIFORM_HISTOGRAM", 0x0d8fc0f3df2a7cceull},
+        {"error_diffusion LINEAR RASTER", 0xffad6746f1a4afd1ull},
+        {"error_diffusion LINEAR SERPENTINE", 0x87ca40a270529c5bull},
+        {"error_diffusion FLOYD_STEINBERG RASTER", 0xcd64152ebe0a6411ull},
+        {"error_diffusion FLOYD_STEINBERG SERPENTINE", 0xcbbcdb7ae81c3660ull},
+        {"error_diffusion JARVICE_JUDICE_NINKE RASTER", 0x0629db82b9f22ce1ull},
+        {"error_diffusion JARVICE_JUDICE_NINKE SERPENTINE", 0x57f183022a1d5a51ull},
+        {"error_diffusion STUCKI RASTER", 0xe65d3d9145e152e5ull},
+        {"error_diffusion STUCKI SERPENTINE", 0xeeba911a3b82e113ull},
+        {"error_diffusion ATKINSON RASTER", 0x0e43adc9e688180dull},
+        {"error_diffusion ATKINSON SERPENTINE", 0xb41c561cd556317full},
+        {"error_diffusion BURKES RASTER", 0x09a061d3b25798e1ull},
+        {"error_diffusion BURKES SERPENTINE", 0xe302ba183629edcbull},
+        {"error_diffusion SIERRA RASTER", 0x655817c9acfe4177ull},
+        {"error_diffusion SIERRA SERPENTINE", 0x3cbdbfd077fa21c0ull},
+        {"error_diffusion SIERRA_TWO_ROW RASTER", 0x67f279d6aac3c944ull},
+        {"error_diffusion SIERRA_TWO_ROW SERPENTINE", 0xcc14987fadf8ceb5ull},
+        {"error_diffusion SIERRA_LITE RASTER", 0xc4d16b9b3e39e9a7ull},
+        {"error_diffusion SIERRA_LITE SERPENTINE", 0xd6324361804cea6dull},
+        {"ordered BAYER_2X2", 0x5d3b89f8463f65e7ull},
+        {"ordered BAYER_4X4", 0x54d3eda12b7c2b2bull},
+        {"ordered BAYER_8X8", 0x312572b960578247ull},
+        {"ordered BAYER_16X16", 0xe16a691e27dbd312ull},
+        {"ordered BLUE_NOISE_2X2", 0x5d3b89f8463f65e7ull},
+        {"ordered BLUE_NOISE_4X4", 0x35fd09910ed02df3ull},
+        {"ordered BLUE_NOISE_8X8", 0x44f5ae742ed1f525ull},
+        {"ordered BLUE_NOISE_16X16", 0x3cae6afcfe3919a9ull},
+        {"ordered BLUE_NOISE_32X32", 0xdd604d216dc37197ull},
+        {"ordered BLUE_NOISE_64X64", 0x5e575138dda9db2cull},
+        {"ordered BLUE_NOISE_128X128", 0x70dabaf35508f006ull},
+        {"ordered BLUE_NOISE_256X256", 0x837a1872c3427019ull},
+        {"ordered WHITE_NOISE_2X2", 0x5739aef7a2dcb098ull},
+        {"ordered WHITE_NOISE_4X4", 0x5dece6ea4d9011fdull},
+        {"ordered WHITE_NOISE_8X8", 0xa000d6f611d835f8ull},
+        {"ordered WHITE_NOISE_16X16", 0xec1bba04d7a77129ull},
+        {"ordered WHITE_NOISE_32X32", 0xdd9c13a139234ea5ull},
+        {"ordered WHITE_NOISE_64X64", 0xabf69f25ee7304d4ull},
+        {"ordered WHITE_NOISE_128X128", 0x03bf8b7625c3b4e9ull},
+        {"ordered WHITE_NOISE_256X256", 0x94304fa2d378336full},
+    };
+
+    auto apply = [](Dither& d, const std::string& label) {
+        std::istringstream words(label);
+        std::string op, a, b;
+        words >> op >> a >> b;
+
+        if(op == "grayscale")
+        {
+            d.grayscale(a, false);
+        }
+        else if(op == "convolve")
+        {
+            d.convolve(a == "emboss.csv" ? (fs::path("data") / "convolution_kernels" / "emboss.csv").string() : a);
+        }
+        else if(op == "reduce")
+        {
+            d.reduce(*parse_enum<MappingMethod>(a == "UNIFORM_HISTOGRAM" ? a : a + "_DISTANCE"), "TWILIGHT5", false);
+        }
+        else if(op == "error_diffusion")
+        {
+            d.error_diffusion(a, *parse_enum<ScanPattern>(b), MappingMethod::EUCLIDEAN_DISTANCE, "SLSO8", false);
+        }
+        else if(op == "ordered")
+        {
+            d.ordered(a, MappingMethod::EUCLIDEAN_DISTANCE, "TWILIGHT5", false);
+        }
+    };
+
+    for(const auto& [label, hash] : expected)
+    {
+        Dither d = load(p);
+        apply(d, label);
+        unsigned long long h = 0xcbf29ce484222325ull;
+
+        for(std::size_t y = 0; y < d.image.get_height(); y++)
+        {
+            for(std::size_t x = 0; x < d.image.get_width(); x++)
+            {
+                const Color c = d.image.get_pixel(x, y);
+
+                for(const int channel : {c.r, c.g, c.b, c.a})
+                {
+                    h ^= static_cast<unsigned long long>(channel);
+                    h *= 0x100000001b3ull;
+                }
+            }
+        }
+
+        std::ostringstream got;
+        got << "0x" << std::hex << std::setw(16) << std::setfill('0') << h;
+        CHECK_MSG(h == hash, label + ": output changed (pixel hash " + got.str() + "ull)");
+    }
+}
+
+// Enum-like arguments are parsed once (4.1): every name round-trips, and anything else,
+// including a different case, is rejected.
+TEST(enum_names_round_trip)
+{
+    for(const auto& entry : EnumNames<MappingMethod>::values)
+    {
+        CHECK(parse_enum<MappingMethod>(entry.name) == entry.value);
+        CHECK(enum_name(entry.value) == entry.name);
+    }
+
+    for(const auto& entry : EnumNames<ScanPattern>::values)
+    {
+        CHECK(parse_enum<ScanPattern>(entry.name) == entry.value);
+        CHECK(enum_name(entry.value) == entry.name);
+    }
+
+    for(const auto& entry : EnumNames<TemporalMethod>::values)
+    {
+        CHECK(parse_enum<TemporalMethod>(entry.name) == entry.value);
+        CHECK(enum_name(entry.value) == entry.name);
+    }
+
+    CHECK(!parse_enum<MappingMethod>("euclidean_distance").has_value());
+    CHECK(!parse_enum<ScanPattern>("SNAKE").has_value());
+    CHECK(!parse_enum<TemporalMethod>("").has_value());
+    CHECK(enum_names<ScanPattern>() == "RASTER, SERPENTINE");
+}
+
+// Library code reports bad input by throwing DitherError instead of exiting (4.3), so
+// these can now be checked in-process.
+TEST(library_errors_throw)
+{
+    auto throws = [](const std::string& label, const std::function<void()>& fn) {
+        try
+        {
+            fn();
+            CHECK_MSG(false, label + ": no DitherError thrown");
+        }
+        catch(const DitherError& e)
+        {
+            CHECK_MSG(std::string(e.what()).size() > 0, label + ": empty message");
+        }
+        catch(...)
+        {
+            CHECK_MSG(false, label + ": threw something other than DitherError");
+        }
+    };
+
+    const std::string missing = tmp_path("does_not_exist.csv").string();
+    const std::string ragged = write_text("lib_ragged.csv", "1,2\n3\n").string();
+    const std::string not_a_number = write_text("lib_nan.csv", "1,abc\n").string();
+    const std::string fraction = write_text("lib_fraction.csv", "0,12.5\n64,128\n").string();
+    const std::string above = write_text("lib_above.csv", "0,300\n64,128\n").string();
+    const std::string gray_two = write_text("lib_gray_two.csv", "0.5,0.5\n").string();
+    const std::string pal_bad = write_text("lib_pal_bad.csv", "name,author,ffffff,zz\n").string();
+    const std::string pal_big = write_text("lib_pal_big.csv", "name,author,1000000\n").string();
+
+    throws("Palette unknown preset", [&] { Palette p(missing); });
+    throws("Palette bad hex", [&] { Palette p(pal_bad); });
+    throws("Palette hex out of range", [&] { Palette p(pal_big); });
+    throws("Convolve unknown preset", [&] { Convolve c(missing); });
+    throws("Convolve ragged rows", [&] { Convolve c(ragged); });
+    throws("Convolve non-numeric value", [&] { Convolve c(not_a_number); });
+    throws("Ordered unknown preset", [&] { Ordered o(missing); });
+    throws("Ordered fractional value", [&] { Ordered o(fraction); });
+    throws("Ordered value above 255", [&] { Ordered o(above); });
+    throws("Grayscale unknown preset", [&] { Grayscale g(missing); });
+    throws("Grayscale wrong number of weights", [&] { Grayscale g(gray_two); });
+    throws("ErrorDiffusion unknown algorithm", [&] { ErrorDiffusion e("NOPE"); });
+    throws("Color hex above ffffff", [&] { Color c(0x1000000u); });
+    throws("Image load missing file", [&] { Image i; i.load(missing); });
+    throws("Image save unknown extension", [&] {
+        Dither d = load(write_png("lib_save.png", 2, 2, [](unsigned, unsigned) { return RGBA{1, 2, 3, 255}; }));
+        d.save(tmp_path("lib_save.jpg").string());
+    });
+    throws("temporal with UNIFORM_HISTOGRAM", [&] {
+        Dither d = load(write_png("lib_temporal.png", 2, 2, [](unsigned, unsigned) { return RGBA{1, 2, 3, 255}; }));
+        d.temporal(TemporalMethod::PWM, 2, MappingMethod::UNIFORM_HISTOGRAM, "TWILIGHT5", false);
+    });
+    throws("temporal with 0 frames", [&] {
+        Dither d = load(write_png("lib_temporal.png", 2, 2, [](unsigned, unsigned) { return RGBA{1, 2, 3, 255}; }));
+        d.temporal(TemporalMethod::PWM, 0, MappingMethod::EUCLIDEAN_DISTANCE, "TWILIGHT5", false);
+    });
+}
+
+// The shared csv matrix parser (4.4) ignores blank lines (trailing ones included),
+// Windows line endings, spaces and a leading '+', so all of these read the same.
+TEST(csv_matrix_parser)
+{
+    const csv::Matrix expected = {{-2.0, -1.0, 0.0}, {-1.0, 1.0, 1.0}, {0.0, 1.0, 2.0}};
+    const std::vector<std::pair<std::string, std::string>> files = {
+        {"plain", "-2.0,-1.0,0.0\n-1.0,1.0,1.0\n0.0,1.0,2.0"},
+        {"trailing newline", "-2.0,-1.0,0.0\n-1.0,1.0,1.0\n0.0,1.0,2.0\n"},
+        {"trailing blank lines", "-2.0,-1.0,0.0\n-1.0,1.0,1.0\n0.0,1.0,2.0\n\n\n"},
+        {"blank line inside", "-2.0,-1.0,0.0\n\n-1.0,1.0,1.0\n0.0,1.0,2.0\n"},
+        {"windows line endings", "-2.0,-1.0,0.0\r\n-1.0,1.0,1.0\r\n0.0,1.0,2.0\r\n"},
+        {"spaces and plus signs", " -2 , -1, +0\n-1,+1 ,1\n 0, 1, +2.0 \n"},
+    };
+
+    for(std::size_t index = 0; index < files.size(); index++)
+    {
+        const auto& [label, contents] = files[index];
+        const std::string path = write_text("csv_" + std::to_string(index) + ".csv", contents).string();
+        CHECK_MSG(csv::read_matrix(path, "test matrix") == expected, label + ": read a different matrix");
+        CHECK_MSG(Convolve(path).kernel == expected, label + ": Convolve read a different kernel");
+    }
+
+    // a threshold matrix with a trailing blank line used to be rejected as "not consistent across rows"
+    const std::string threshold = write_text("csv_threshold.csv", "0,128\n192,64\n\n").string();
+    CHECK(Ordered(threshold).threshold_matrix == Ordered("BAYER_2X2").threshold_matrix);
+
+    // grayscale weights use the same parser
+    const std::string weights = write_text("csv_weights.csv", "0.299, 0.587, 0.114\r\n").string();
+    CHECK(Grayscale(weights).weights == (Grayscale::Weights{0.299, 0.587, 0.114}));
+}
+
+// -b reports each step once the output has been saved, and nothing when saving fails (4.6, Q11).
+TEST(benchmark_report)
+{
+    if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
+    {
+        CHECK_MSG(false, "dither binary not found: '" + g_dither_binary + "'");
+        return;
+    }
+
+    const std::string in = quote(write_png("bench_in.png", 16, 16, [](unsigned x, unsigned y) {
+        const unsigned char v = static_cast<unsigned char>((x + y) * 8); return RGBA{v, v, v, 255};
+    }).string());
+    const std::string out = quote(tmp_path("bench_out.png").string());
+
+    const RunResult ok = run_dither("-i " + in + " -o " + out + " -g BT709 -e FLOYD_STEINBERG,RASTER,EUCLIDEAN_DISTANCE,SLSO8 -b");
+    CHECK_MSG(!ok.crashed && ok.exit_code == 0, "benchmark run failed: " + first_line(ok.output));
+
+    for(const char* step : {"load:", "grayscale:", "error_diffusion:", "save:", "processing:", "total:"})
+    {
+        CHECK_MSG(ok.output.find(step) != std::string::npos, std::string("no '") + step + "' line in: " + ok.output);
+    }
+
+    CHECK_MSG(ok.output.find("grayscale:") < ok.output.find("error_diffusion:"), "steps are not in the order they ran");
+
+    const RunResult none = run_dither("-i " + in + " -o " + out + " -b");
+    CHECK_MSG(none.output.find("no operations") != std::string::npos, "with no operations, expected 'no operations' in: " + none.output);
+
+    const RunResult failed = run_dither("-i " + in + " -o " + quote((TMP_DIR / "no_such_dir" / "out.png").string()) + " -g BT709 -b");
+    CHECK_MSG(failed.exit_code != 0, "saving into a missing folder should fail");
+    CHECK_MSG(failed.output.find("total:") == std::string::npos, "a time was printed although saving failed: " + failed.output);
+}
+
+// ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
 
@@ -999,7 +1257,21 @@ int main(int argc, char* argv[])
 
         harness::failures().clear();
         harness::checks_run() = 0;
-        t.fn();
+
+        // library code throws DitherError on bad input, so an exception fails the test instead of ending the run
+        try
+        {
+            t.fn();
+        }
+        catch(const std::exception& e)
+        {
+            harness::failures().push_back({t.name, std::string("uncaught exception: ") + e.what()});
+        }
+        catch(...)
+        {
+            harness::failures().push_back({t.name, "uncaught non-standard exception"});
+        }
+
         const auto& f = harness::failures();
         const bool ok = f.empty();
         const char* tag;

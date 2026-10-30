@@ -1,17 +1,11 @@
-#ifndef __COLOR_H
-#define __COLOR_H
+#pragma once
 
 #include <algorithm> // std::clamp
 #include <array> // std::array
-#include <cmath> // sqrt()
-#include <cstdlib> // std::exit
-#include <iomanip> // std::hex
-#include <iostream> // std::cerr, std::endl
-#include <sstream> // std::stringstream
+#include <cstddef> // std::size_t
 #include <string> // std::string
-#include <unordered_map> // std::unordered_map
-#include <vector> // std::vector
 
+// 8-bit RGBA colour, as stored in the image and the palettes
 class Color
 {
 public:
@@ -20,38 +14,28 @@ public:
     static inline constexpr std::size_t INDEX_G = 1;
     static inline constexpr std::size_t INDEX_B = 2;
     static inline constexpr std::size_t INDEX_A = 3;
-    static inline constexpr std::size_t CHANNEL_MAX = 255;
+    // int, so channel arithmetic never mixes signed and unsigned values (the cause of B1)
+    static inline constexpr int CHANNEL_MAX = 255;
     static inline constexpr std::size_t CHANNEL_VALUES = 256;
-    static inline constexpr std::size_t HEX_MAX = 0xffffff;
+    static inline constexpr unsigned int HEX_MAX = 0xffffff;
 
-    Color();
-    Color(int r, int g, int b, int a = CHANNEL_MAX);
-    Color(unsigned int hex_code);
+    Color() = default;
+    Color(int r, int g, int b, int a = CHANNEL_MAX) : r(r), g(g), b(b), a(a) {}
+    // 0xRRGGBB; throws DitherError above HEX_MAX
+    explicit Color(unsigned int hex_code);
 
-    unsigned int get_hex();
-    double get_lightness();
+    unsigned int get_hex() const;
 
-    bool equals(const Color& other) const;
-    Color add(const Color& other) const;
+    // weighted sum of the channels, clamped and truncated to 8 bits (alpha unchanged)
+    void to_grayscale(const std::array<double, 3>& grayscale_weights);
 
-    int distance_euclidean_squared(Color other, std::vector<double> channel_weights = {0.2126, 0.7152, 0.0722});
-    double distance_euclidean(Color other);
-    int distance_manhattan(Color other);
+    std::string to_string() const;
+    std::string to_string_hex() const;
 
-    double grayscale_value(std::vector<double> grayscale_weights);
-
-    void to_grayscale(std::vector<double> grayscale_weights);
-
-    std::string to_string();
-    std::string to_string_hex();
-
-    // widen a {min, max} colour range so that it includes this colour (each channel independently)
-    void expand_range(std::vector<Color>& range) const;
-
-    int r;
-    int g;
-    int b;
-    int a;
+    int r = 0;
+    int g = 0;
+    int b = 0;
+    int a = CHANNEL_MAX;
 };
 
 // Working colour for the dither maths (Phase 3): float channels on the 0-255 scale, either
@@ -91,7 +75,7 @@ class Transfer
 public:
     explicit Transfer(double file_gamma = 0.0);
 
-    float to_linear(int encoded) const { return lut[static_cast<std::size_t>(std::clamp(encoded, 0, static_cast<int>(Color::CHANNEL_MAX)))]; }
+    float to_linear(int encoded) const { return lut[static_cast<std::size_t>(std::clamp(encoded, 0, Color::CHANNEL_MAX))]; }
     RGBf to_linear(const Color& c) const { return {to_linear(c.r), to_linear(c.g), to_linear(c.b)}; }
     // rounds to the nearest 8-bit encoded value
     int to_encoded(float linear) const;
@@ -101,5 +85,3 @@ private:
     double gamma;
     std::array<float, Color::CHANNEL_VALUES> lut;
 };
-
-#endif

@@ -1,118 +1,46 @@
 #include "color.h"
-
-Color::Color()
-{
-    r = 0;
-    g = 0;
-    b = 0;
-    a = CHANNEL_MAX;
-    return;
-}
-
-Color::Color(int r, int g, int b, int a)
-{
-    this->r = r;
-    this->g = g;
-    this->b = b;
-    this->a = a;
-    return;
-}
+#include "error.h"
+#include <cmath> // std::sqrt, std::pow, std::fabs, std::lround
+#include <iomanip> // std::setw, std::setfill, std::hex
+#include <sstream> // std::stringstream
 
 Color::Color(unsigned int hex_code)
 {
-    if(hex_code > 0xffffff)
+    if(hex_code > HEX_MAX)
     {
-        std::cerr << "Error: color hex code invalid - " << hex_code << std::endl;
-        std::exit(EXIT_FAILURE);
+        throw DitherError("color hex code invalid - " + std::to_string(hex_code));
     }
 
-    r = (hex_code >> 16) & CHANNEL_MAX;
-    g = (hex_code >> 8) & CHANNEL_MAX;
-    b = (hex_code >> 0) & CHANNEL_MAX;
+    r = static_cast<int>((hex_code >> 16) & 0xffu);
+    g = static_cast<int>((hex_code >> 8) & 0xffu);
+    b = static_cast<int>(hex_code & 0xffu);
     a = CHANNEL_MAX;
-    
-    return;
 }
 
-unsigned int Color::get_hex()
+unsigned int Color::get_hex() const
 {
-    return (r << 16) + (g << 8) + (b << 0);
+    return (static_cast<unsigned int>(r) << 16) + (static_cast<unsigned int>(g) << 8) + static_cast<unsigned int>(b);
 }
 
-double Color::get_lightness()
+void Color::to_grayscale(const std::array<double, 3>& grayscale_weights)
 {
-    return static_cast<double>(std::max(r, std::max(g, b)) + std::min(r, std::min(g, b))) / (2.0 * static_cast<double>(CHANNEL_MAX));
-}
-
-bool Color::equals(const Color& other) const
-{
-    return (this->r == other.r) && (this->g == other.g) && (this->b == other.b) && (this->a == other.a);
-}
-
-Color Color::add(const Color& other) const
-{
-    return Color(this->r + other.r, this->g + other.g, this->b + other.b, std::max(this->a, other.a));
-}
-
-int Color::distance_euclidean_squared(Color other, std::vector<double> channel_weights)
-{
-    return (channel_weights[INDEX_R] * (other.r - this->r) * (other.r - this->r)) + (channel_weights[INDEX_G] * (other.g - this->g) * (other.g - this->g)) + (channel_weights[INDEX_B] * (other.b - this->b) * (other.b - this->b));
-}
-
-double Color::distance_euclidean(Color other)
-{
-    return sqrt(static_cast<double>(distance_euclidean_squared(other)));
-}
-
-int Color::distance_manhattan(Color other)
-{
-    return abs(other.r - this->r) + abs(other.g - this->g) + abs(other.b - this->b);
-}
-
-double Color::grayscale_value(std::vector<double> grayscale_weights)
-{
-    return static_cast<double>(r) * grayscale_weights[INDEX_R] + static_cast<double>(g) * grayscale_weights[INDEX_G] + static_cast<double>(b) * grayscale_weights[INDEX_B];
-}
-
-void Color::to_grayscale(std::vector<double> grayscale_weights)
-{
-    double value = grayscale_value(grayscale_weights);
+    double value = static_cast<double>(r) * grayscale_weights[INDEX_R] + static_cast<double>(g) * grayscale_weights[INDEX_G] + static_cast<double>(b) * grayscale_weights[INDEX_B];
     value = std::clamp(value, 0.0, static_cast<double>(CHANNEL_MAX));
     r = static_cast<int>(value);
     g = static_cast<int>(value);
     b = static_cast<int>(value);
-    return;
 }
 
-std::string Color::to_string()
+std::string Color::to_string() const
 {
-    std::string output = "";
-    output += std::to_string(r) + " " + std::to_string(g) + " " + std::to_string(b);
-    return output;
+    return std::to_string(r) + " " + std::to_string(g) + " " + std::to_string(b);
 }
 
-std::string Color::to_string_hex()
+std::string Color::to_string_hex() const
 {
     std::stringstream ss;
     ss << std::setfill('0') << std::setw(6) << std::hex << get_hex();
-    std::string output = ss.str();
-    return output;
-}
-
-void Color::expand_range(std::vector<Color>& range) const
-{
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
-
-    // independent ifs (not else-if): the first value seen must be able to set both the min and the max (B4)
-    range[INDEX_COLOR_MIN].r = std::min(range[INDEX_COLOR_MIN].r, r);
-    range[INDEX_COLOR_MAX].r = std::max(range[INDEX_COLOR_MAX].r, r);
-    range[INDEX_COLOR_MIN].g = std::min(range[INDEX_COLOR_MIN].g, g);
-    range[INDEX_COLOR_MAX].g = std::max(range[INDEX_COLOR_MAX].g, g);
-    range[INDEX_COLOR_MIN].b = std::min(range[INDEX_COLOR_MIN].b, b);
-    range[INDEX_COLOR_MAX].b = std::max(range[INDEX_COLOR_MAX].b, b);
-
-    return;
+    return ss.str();
 }
 
 RGBf RGBf::clamped() const

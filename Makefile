@@ -5,7 +5,8 @@ SDIR = ./src
 TDIR = ./tests
 
 CC = g++
-WARNINGS = -Wall -Wextra -Wconversion
+# -Wsign-conversion catches signed/unsigned mix-ups such as REVIEW B1
+WARNINGS = -Wall -Wextra -Wconversion -Wsign-conversion
 CFLAGS = -I$(IDIR) -std=c++23 -O2 $(WARNINGS) -MMD -MP
 
 # on Windows (MinGW) the linker appends .exe, so the target name must include it
@@ -19,7 +20,7 @@ TARGET = $(BDIR)/dither$(EXE)
 TEST_TARGET = $(BDIR)/test_dither$(EXE)
 
 # list of objects and rule to format them as [OBJECT_DIR]/[OBJECT]
-_OBJ = benchmark.o cli.o color.o dither.o gif.o image.o lodepng.o main.o palette.o
+_OBJ = benchmark.o cli.o color.o convolve.o csv.o dither.o error_diffusion.o gif.o grayscale.o image.o lodepng.o main.o ordered.o ordered_tables.o palette.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 # every object except main.o, linked into the test runner

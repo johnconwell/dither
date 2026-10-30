@@ -1,37 +1,86 @@
 #include "benchmark.h"
-
-Benchmark::Benchmark()
-{
-	time_start = std::chrono::time_point<std::chrono::steady_clock>();
-    time_end = std::chrono::time_point<std::chrono::steady_clock>();
-}
+#include <algorithm> // std::max
+#include <iomanip> // std::setw, std::left
 
 void Benchmark::start()
 {
-	time_start = std::chrono::steady_clock::now();
+    recorded.clear();
+    time_last = std::chrono::steady_clock::now();
 }
 
-void Benchmark::stop()
+void Benchmark::step(const std::string& label)
 {
-	time_end = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    recorded.emplace_back(label, std::chrono::duration_cast<Duration>(now - time_last));
+    time_last = now;
 }
 
-std::size_t Benchmark::time_ns()
+const std::vector<std::pair<std::string, Benchmark::Duration>>& Benchmark::steps() const
 {
-	return std::chrono::nanoseconds(time_end - time_start).count();
+    return recorded;
 }
 
-std::size_t Benchmark::time_us()
+Benchmark::Duration Benchmark::total() const
 {
-	return std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count();
+    Duration sum{0};
+
+    for(const auto& [label, duration] : recorded)
+    {
+        sum += duration;
+    }
+
+    return sum;
 }
 
-std::size_t Benchmark::time_ms()
+void Benchmark::report(std::ostream& out, const std::string& title) const
 {
-	return std::chrono::duration_cast<std::chrono::milliseconds>(time_end - time_start).count();
+    Duration processing{0};
+    bool any_operation = false;
+    std::size_t width = std::string("processing").size();
+
+    for(const auto& [label, duration] : recorded)
+    {
+        width = std::max(width, label.size());
+
+        if(label != "load" && label != "save")
+        {
+            processing += duration;
+            any_operation = true;
+        }
+    }
+
+    auto line = [&](const std::string& label, const std::string& value) {
+        out << "  " << std::left << std::setw(static_cast<int>(width) + 2) << label + ":" << value << "\n";
+    };
+
+    out << title << "\n";
+
+    for(const auto& [label, duration] : recorded)
+    {
+        line(label, format(duration));
+    }
+
+    line("processing", any_operation ? format(processing) : "no operations");
+    line("total", format(total()));
+    out.flush();
 }
 
-double Benchmark::time_s()
+std::string Benchmark::format(Duration duration)
 {
-	return std::chrono::duration<double>(time_end - time_start).count();
+    using namespace std::chrono;
+    const auto ns = duration.count();
+    const auto us = duration_cast<microseconds>(duration).count();
+    const auto ms = duration_cast<milliseconds>(duration).count();
+
+    if(us < 10)
+    {
+        return std::to_string(ns) + "ns";
+    }
+
+    if(ms < 10)
+    {
+        return std::to_string(us) + "us";
+    }
+
+    return std::to_string(ms) + "ms";
 }

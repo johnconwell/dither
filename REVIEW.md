@@ -2,7 +2,7 @@
 
 **Scope:** every first-party source file (`src/`, `include/` apart from the vendored lodepng, cxxopts and gif-h), the `Makefile`, `run.bat`, the `data/` CSVs and `README.md` (taken as the spec).
 **Method:** I read all the code, then built the project (GCC 13, `-std=c++23`) and ran targeted tests against `input/boat.png` and small synthetic images to confirm each bug below. A finding marked **Verified** was reproduced by running the program. A finding marked *By inspection* comes from reading the code only.
-**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the uncommitted ROADMAP Phase 0–3 work. See §0 for what changed since the first review.
+**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the ROADMAP Phase 0–4 work. See §0 for what changed since the first review.
 
 ---
 
@@ -49,6 +49,23 @@
 | `gamma_linear_coverage` is now a `TEST`; six new tests (`transfer_round_trip`, `png_gamma_chunks`, `grayscale_linear_levels`, `ordered_all_matrices_coverage`, `error_diffusion_keeps_small_error`, `alpha_preserved`) | `make test`: 18 pass, 0 expected failures, 0.4 s. Each new test fails on the Phase 2 code. |
 | Clean build | 8 first-party warnings, down from 52. |
 
+### 0.5 ROADMAP Phase 4 (30 Oct 2026)
+
+Phase 4 is a refactor only: 861 of 861 Phase 3 outputs are byte-identical. ROADMAP "Phase 4 as built" has the details.
+
+| Change | Effect on this review |
+|---|---|
+| `MappingMethod`, `ScanPattern` and `TemporalMethod` enums (`options.h`), parsed once in `CLI::parse` | **§2.3 point 1 resolved.** No string is compared per pixel any more, and the error-diffusion algorithm is also checked before the image is loaded. |
+| Preset tables are function-local statics in `.cpp` files; Bayer matrices are generated in code; noise matrices are byte arrays in `src/ordered_tables.cpp` | **§2.3 point 3 resolved.** `dither.o` is 48 KB (1.75 MB before), `bin/dither` 0.8 MB (2.1 MB), and runs are 4–11 ms faster. |
+| `DitherError` thrown everywhere below `main`; `main` prints it and returns 1 | **§2.3 point 4 resolved.** The same exit code for every bad input; the library errors are now also tested in-process. |
+| One `csv::read_matrix` for kernels, threshold matrices and grayscale weights | **The CSV-parser part of §2.3 point 6 resolved.** Blank lines and CRLF are accepted, and fractional threshold values are rejected. |
+| Old `Color` distance functions removed; `std::array` weights; `const&` everywhere; `Color::CHANNEL_MAX` is `int` | **Q5 resolved**, and so is the rest of Q6. |
+| `-b` reports `load`, each operation, `save`, `processing` and `total`, only after a successful save | **Q11 resolved**, except for the README text, which is Phase 6. |
+| `#pragma once` instead of `__NAME_H` guards | **Q8 resolved.** |
+| `-Wsign-conversion` turned on (in `Makefile.new` until it replaces `Makefile`, which the remote tools can't write) | A clean build gives **0** first-party warnings (8 before). |
+| 5 new tests, plus `ed_kernel_sums` rewritten | `make test`: 23 pass, 0 expected failures, under 1 s. The runner now reports an escaped exception as a failure instead of aborting. |
+| The Phase 0 Makefile has replaced `Makefile` | §5 updated. |
+
 ---
 
 ## 1. Executive summary
@@ -79,17 +96,18 @@ On the spec side, the main gaps are listed below. (`--benchmark`, a gap in the f
 ### 2.1 Structure
 
 ```
-main.cpp
-  └─ CLI (cli.cpp, cxxopts)        parses flags into plain string/bool fields
-  └─ Benchmark (benchmark.cpp)     steady_clock timer around the processing step (-b)
+main.cpp                          catches DitherError (error.h), prints it, returns 1
+  └─ CLI (cli.cpp, cxxopts)        parses flags; enum-like values -> enums (options.h)
+  └─ Benchmark (benchmark.cpp)     named steps: load, each operation, save (-b)
   └─ Dither (dither.cpp)           facade: owns one Image, one method per operation
-        ├─ Grayscale   (grayscale.h)        preset weights or CSV  → std::vector<double>
-        ├─ Convolve    (convolve.h)         preset kernels or CSV  → 2-D vector<double>
-        ├─ ErrorDiffusion (error_diffusion.h) kernel offsets + scalars
-        ├─ Ordered     (ordered.h, 646 KB)  preset threshold matrices or CSV
-        ├─ Palette     (palette.cpp)        preset palettes or Lospec CSV; nearest-colour search
-        ├─ Color       (color.cpp)          int RGBA value type, distances, sRGB<->linear
-        └─ Image       (image.cpp)          vector of RGBA8 frames; PNG via lodepng, GIF via gif-h
+        ├─ Grayscale   (grayscale.cpp)       preset weights or CSV  → std::array<double, 3>
+        ├─ Convolve    (convolve.cpp)        preset kernels or CSV  → 2-D vector<double>
+        ├─ ErrorDiffusion (error_diffusion.cpp) {dx, dy, scalar} taps
+        ├─ Ordered     (ordered.cpp)         generated Bayer, byte-array noise matrices (ordered_tables.cpp) or CSV
+        ├─ csv::read_matrix (csv.cpp)        the one CSV matrix parser for the three above
+        ├─ Palette     (palette.cpp)         preset palettes or Lospec CSV; nearest-colour search
+        ├─ Color / RGBf / Transfer (color.cpp) 8-bit colour, float working colour, sRGB <-> linear
+        └─ Image       (image.cpp)           vector of RGBA8 frames; PNG via lodepng, GIF via gif-h
 ```
 
 `main` runs the operations in a fixed order, whatever order the flags were given in: grayscale → convolve → reduce → error diffusion → ordered → temporal. It then saves the result.
@@ -102,12 +120,12 @@ main.cpp
 
 ### 2.3 Architectural concerns
 
-1. **Configuration is passed around as strings.** Method names travel as `std::string` all the way down to the per-pixel code. For example, `Palette::nearest` compares `mapping_method` against string literals for every pixel, and nothing is validated up front. Because of this, invalid values are caught late or not at all (see B6). Parsing into `enum class`es once, in `CLI`, would fix both problems.
+1. ✅ *(Resolved in Phase 4: enums parsed once in `CLI`.)* **Configuration is passed around as strings.** Method names travel as `std::string` all the way down to the per-pixel code. For example, `Palette::nearest` compares `mapping_method` against string literals for every pixel, and nothing is validated up front. Because of this, invalid values are caught late or not at all (see B6). Parsing into `enum class`es once, in `CLI`, would fix both problems.
 2. **The CLI model has one shared slot for the mapping method and palette.** `-r`, `-e`, `-d` and `-t` all write into the same `mapping_method` and `palette` fields (`cli.cpp:107-108, 124-125, 140-141, 157-158`). If you combine operations, the last flag silently wins for all of them. The README says "any number of optional flags" but never says how combinations behave.
-3. **Lookup tables are rebuilt on every construction.** `PRESET_PALETTES`, `KERNELS`, `METHODS`, `COORDINATES`, `SCALARS` and `THRESHOLD_MATRIXES` are non-static `const` data members. Each `Ordered` object therefore rebuilds an `unordered_map` holding all 20 matrices, including two 256×256 ones. Putting ~600 KB of numbers in `ordered.h` also makes compiles slow: `dither.o` is 3 MB. These tables should be `static inline const` data, ideally in a `.cpp` file, or loaded from the CSVs that already exist in `data/threshold_matrixes/`.
-4. **Library code exits the process.** `std::exit(EXIT_FAILURE)` is called from constructors and from `Palette::nearest`. That makes the classes impossible to reuse or test. Returning errors, or throwing and catching in `main`, would be cleaner.
+3. ✅ *(Resolved in Phase 4: static tables in `.cpp` files; generated Bayer; byte-array noise matrices.)* **Lookup tables are rebuilt on every construction.** `PRESET_PALETTES`, `KERNELS`, `METHODS`, `COORDINATES`, `SCALARS` and `THRESHOLD_MATRIXES` are non-static `const` data members. Each `Ordered` object therefore rebuilds an `unordered_map` holding all 20 matrices, including two 256×256 ones. Putting ~600 KB of numbers in `ordered.h` also makes compiles slow: `dither.o` is 3 MB. These tables should be `static inline const` data, ideally in a `.cpp` file, or loaded from the CSVs that already exist in `data/threshold_matrixes/`.
+4. ✅ *(Resolved in Phase 4: `DitherError`.)* **Library code exits the process.** `std::exit(EXIT_FAILURE)` is called from constructors and from `Palette::nearest`. That makes the classes impossible to reuse or test. Returning errors, or throwing and catching in `main`, would be cleaner.
 5. ✅ *(Resolved in Phase 3: dithering uses a float working buffer.)* **The colour pipeline is 8-bit integers throughout**, including linear-light values and diffused error. This causes avoidable precision loss (B3, Q3). A `float` working buffer is the usual approach.
-6. **Code is duplicated in several places:**
+6. ✅ *(Resolved: the slope set-up in Phase 1, the scan loops and `get_color_range` in Phase 3, and the CSV parser in Phase 4.)* **Code is duplicated in several places:**
    - The `UNIFORM_HISTOGRAM` slope set-up is copied three times in `dither.cpp`.
    - The raster and serpentine loops are near-identical 40-line blocks.
    - The CSV matrix parser is copied between `convolve.h` and `ordered.h`.
@@ -216,13 +234,13 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 - ✅ *(Phase 3, D3)* **Q2 — Alpha is discarded.** Every operation writes alpha = 255, and transparent pixels get dithered and pass error on to their neighbours. A fully transparent test image came out opaque. The README says nothing about alpha either way.
 - ✅ *(Phase 3: mid-rank centring, which also fixes the uneven small white-noise matrices)* **Q3 — Bayer thresholds are biased.** Built-in values run `k·256/N²` (2×2 is {0, 64, 128, 192}). Subtracting 127 gives a mean offset of −31 for 2×2, which darkens results slightly. Centred thresholds `(k+0.5)·256/N² − 128` remove the bias.
 - **Q4 — PWM is stochastic, not pulse-width modulation.** Each frame draws a random number against the duty cycle. With 4–8 frames the real proportion varies a lot from pixel to pixel, which gives flicker noise. A deterministic schedule (lighter for `round(duty·frames)` frames, phase-shifted per pixel by a blue-noise value) would match the name and look much smoother. PWM also picks its darker/lighter pair using HSL lightness only, so hue is ignored.
-- **Q5 — Per-pixel copies.** `Palette::nearest(Color, std::string, std::vector<Color>, std::vector<Color>, std::vector<double>)` takes everything by value, so each pixel copies a string and three vectors. `distance_euclidean_squared` also allocates its default weight vector on every call. Passing by `const&` and using `std::array` would fix this. Speed is fine at `-O1` (~0.14 s for 512×512). The old Makefile built at `-O0`; the Phase 0 Makefile uses `-O2`.
+- ✅ *(Phase 3 and 4)* **Q5 — Per-pixel copies.** `Palette::nearest(Color, std::string, std::vector<Color>, std::vector<Color>, std::vector<double>)` takes everything by value, so each pixel copies a string and three vectors. `distance_euclidean_squared` also allocates its default weight vector on every call. Passing by `const&` and using `std::array` would fix this. Speed is fine at `-O1` (~0.14 s for 512×512). The old Makefile built at `-O0`; the Phase 0 Makefile uses `-O2`.
 - ✅ *(Phase 3: dither paths use `RGBf` distances in `double`; the old `Color` functions remain but are unused there)* **Q6 — Weighted distance truncated.** `distance_euclidean_squared` returns `int` from a weighted `double` sum, which truncates. It also overflows for out-of-range inputs, and that overflow is what turns B1 into a silent wrong answer rather than a merely bad one.
 - **Q7 — Fragile includes.** `ordered.h` uses `std::ifstream`, `std::stringstream`, `std::filesystem` and `std::count_if` without including `<fstream>`, `<sstream>`, `<filesystem>` or `<algorithm>`. `convolve.h` is missing `<algorithm>`. It builds on your MinGW toolchain only through transitive includes. **On GCC 13/Linux it fails:** `'count_if' is not a member of 'std'`. ✅ **Resolved in Phase 0**: `ordered.h` and `convolve.h` now include `<algorithm>`, `<fstream>`, `<sstream>`, `<filesystem>` and `<iterator>`, and the project builds on GCC 13.
-- **Q8 — Reserved names.** Header guards such as `__CLI_H` use reserved identifiers. Prefer `DITHER_CLI_H` or `#pragma once`.
+- ✅ *(Phase 4)* **Q8 — Reserved names.** Header guards such as `__CLI_H` use reserved identifiers. Prefer `DITHER_CLI_H` or `#pragma once`.
 - **Q9 — Wrong help text.** The help for `-g` says "Applies gamma correction the the input image" (`cli.cpp:41`). The `-a` text has the same "the the" typo.
 - **Q10 — Unclear extension check.** `save` decides the format with `contains(".png")`, so `my.png.backup.gif` is saved as a PNG. Check the extension instead.
-- **Q11 — Benchmark details** (new code, *by inspection*, all minor):
+- ✅ *(Phase 4, apart from the README text)* **Q11 — Benchmark details** (new code, *by inspection*, all minor):
   - The timer covers only the processing step, not load or save. That is a reasonable choice, but neither `--help` nor the README says so.
   - There is no breakdown per operation when several are combined.
   - The time is printed before `save()`, so it is still reported when saving fails (for example `-o out.jpg` prints a time, then the format error, then exits 0).
@@ -263,11 +281,11 @@ The items that do match the README: all 9 error-diffusion kernels (including Atk
 ---
 
 ## 5. Build and repository hygiene
-Items marked ✅ are fixed by the Phase 0 Makefile. That Makefile is in `Makefile.new` until it replaces `Makefile`.
+Items marked ✅ are fixed by the Phase 0 Makefile, which has now replaced `Makefile`.
 
 - ✅ **Header dependencies are missing.** `_DEPS` left out `convolve.h`, `error_diffusion.h`, `grayscale.h` and `ordered.h`. *Phase 0:* `-MMD -MP` dependency files replace `_DEPS`; touching `ordered.h` now rebuilds only `dither.o` and `main.o`.
 - ✅ **The target name isn't the file it builds.** *Phase 0:* the targets are now `bin/dither` (`bin/dither.exe` on Windows) with `all` as the default; `make dither` still works.
-- ✅ **No optimisation and few warnings.** *Phase 0:* `-O2 -Wall -Wextra -Wconversion`, with warnings off only for vendored lodepng and gif-h. A clean build shows 71 first-party warnings: `-Wtype-limits` (B2, Q12), `-Wmaybe-uninitialized` (B6, PWM) and many `size_t` → `unsigned`/`int` conversions. **Correction to the first review:** `-Wconversion` does *not* flag B1 on GCC 13. Only `-Wsign-conversion` does (`dither.cpp:343-345`), and it is left off for now because it is noisy.
+- ✅ **No optimisation and few warnings.** *Phase 0:* `-O2 -Wall -Wextra -Wconversion`, with warnings off only for vendored lodepng and gif-h. A clean build shows 71 first-party warnings: `-Wtype-limits` (B2, Q12), `-Wmaybe-uninitialized` (B6, PWM) and many `size_t` → `unsigned`/`int` conversions. **Correction to the first review:** `-Wconversion` does *not* flag B1 on GCC 13. Only `-Wsign-conversion` does (`dither.cpp:343-345`). ✅ *Phase 4:* `-Wsign-conversion` is now on, and a clean build gives 0 first-party warnings.
 - ✅ **`make clean` deleted everything in `output/`.** *Phase 0:* `clean` now removes only binaries, objects, `.d` files and `tests/tmp/`. The four images in `output/` (`eiffel_tower*.png`, `poker_table.png`, `will.png`) are safe. If example images come back, still keep them in a separate folder such as `docs/examples/`.
 - **`bin/dither.exe` and `obj/*.o` are stale.** They are dated 20 Oct. Run `make clean` before the first build with the new Makefile: the old objects have no `.d` files, and some look newer than their sources, so make would otherwise keep them. Since then, `color.cpp`, `dither.cpp` and `palette.cpp` changed on 22 Oct, and `main.cpp` plus the new `benchmark.*` files arrived with `v1.0.0`. The binary on disk has no `--benchmark` support. The binary also sits in the tree even though `.gitignore` excludes `*.exe`.
 - **`run.bat`** is git-ignored and points at another project (`scream_jam_2025`). It uses the obsolete 3-argument `-e` form. It's fine as a personal script, but don't mistake it for a project example.
@@ -284,5 +302,5 @@ A step-by-step implementation plan is in **ROADMAP.md**.
 4. **B5, B6** — fix the key typo; validate every enum-like argument and the frame count in `CLI::parse`; return non-zero for unknown output formats; reject empty palettes.
 5. **B4 / S5** — fix the slope and the min/max search, guard against division by zero, and decide whether to implement real histogram mapping or rename it (for example `RANGE_STRETCH`).
 6. **Docs** — S2–S4 and S10–S17; document what `--benchmark` measures; Q11 tidy-ups.
-7. **Structure** — enums instead of strings, static tables, a float error buffer and per-operation palette arguments. (The test suite is done; see §0.2.)
+7. ~~**Structure** — enums instead of strings, static tables, a float error buffer~~ ✅ done in Phases 3 and 4. Still to do: per-operation palette arguments (D2, Phase 5).
 8. ~~**Build** — complete the dependencies, `-O2 -Wextra -Wconversion`, a non-destructive `clean`, the missing `#include`s~~ ✅ done in Phase 0. Still to do: the minimum GCC version in the README (S17).

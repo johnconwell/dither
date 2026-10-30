@@ -1,19 +1,24 @@
 #include "dither.h"
+#include "convolve.h"
+#include "error.h"
+#include "error_diffusion.h"
+#include "grayscale.h"
+#include "ordered.h"
+#include "palette.h"
+#include <algorithm> // std::clamp, std::sort, std::equal_range
+#include <cmath> // std::lround
+#include <limits> // std::numeric_limits
+#include <random> // std::random_device, std::mt19937, std::uniform_real_distribution, std::discrete_distribution
+#include <vector> // std::vector
 
-Dither::Dither(std::size_t frames)
+void Dither::load(const std::string& file_name)
 {
-    image = Image(frames);
-    return;
+    image.load(file_name);
 }
 
-std::size_t Dither::load(const char* file_name)
+void Dither::save(const std::string& file_name) const
 {
-    return image.load(file_name);
-}
-
-std::size_t Dither::save(const char* file_name)
-{
-    return image.save(file_name);
+    image.save(file_name);
 }
 
 namespace
@@ -36,7 +41,7 @@ namespace
         bool transparent(std::size_t i) const { return alpha[i] == 0; }
     };
 
-    Working make_working(Image& image, const Transfer* transfer)
+    Working make_working(const Image& image, const Transfer* transfer)
     {
         Working w;
         w.width = image.get_width();
@@ -52,7 +57,7 @@ namespace
         {
             for(std::size_t x = 0; x < w.width; x++)
             {
-                const Color color = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+                const Color color = image.get_pixel(x, y);
                 const std::size_t i = w.index(x, y);
                 const RGBf value = transfer ? transfer->to_linear(color) : RGBf(color);
                 w.pixels[i] = value;
@@ -110,10 +115,10 @@ namespace
     }
 }
 
-void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction)
+void Dither::grayscale(const std::string& name_grayscale_weights, bool gamma_correction)
 {
     const Grayscale grayscale = Grayscale(name_grayscale_weights);
-    const std::vector<double>& weights = grayscale.weights;
+    const Grayscale::Weights& weights = grayscale.weights;
     const Transfer transfer(image.get_gamma());
     const std::size_t height = image.get_height();
     const std::size_t width = image.get_width();
@@ -122,7 +127,7 @@ void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction
     {
         for(std::size_t x = 0; x < width; x++)
         {
-            Color color = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            Color color = image.get_pixel(x, y);
 
             if(gamma_correction)
             {
@@ -137,14 +142,12 @@ void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction
                 color.to_grayscale(weights);
             }
 
-            image.set_pixel(color, static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            image.set_pixel(color, x, y);
         }
     }
-
-    return;
 }
 
-void Dither::convolve(std::string name_kernel)
+void Dither::convolve(const std::string& name_kernel)
 {
     const Convolve convolve = Convolve(name_kernel);
     const std::vector<std::vector<double>>& kernel = convolve.kernel;
@@ -154,7 +157,6 @@ void Dither::convolve(std::string name_kernel)
     const int kernel_width = static_cast<int>(kernel[0].size());
     const int kernel_height_half = kernel_height / 2;
     const int kernel_width_half = kernel_width / 2;
-    constexpr int CHANNEL_MAX = static_cast<int>(Color::CHANNEL_MAX);
 
     // read every source pixel once, so already-convolved pixels are never sampled again
     std::vector<Color> source(static_cast<std::size_t>(image_width) * static_cast<std::size_t>(image_height));
@@ -163,11 +165,11 @@ void Dither::convolve(std::string name_kernel)
     {
         for(int x = 0; x < image_width; x++)
         {
-            source[static_cast<std::size_t>(y * image_width + x)] = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            source[static_cast<std::size_t>(y * image_width + x)] = image.get_pixel(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
         }
     }
 
-    auto to_channel = [](double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, static_cast<long>(CHANNEL_MAX))); };
+    auto to_channel = [](double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, static_cast<long>(Color::CHANNEL_MAX))); };
 
     for(int y = 0; y < image_height; y++)
     {
@@ -198,14 +200,12 @@ void Dither::convolve(std::string name_kernel)
 
             const Color& original = source[static_cast<std::size_t>(y * image_width + x)];
             const Color color = Color(to_channel(sum_r), to_channel(sum_g), to_channel(sum_b), original.a);
-            image.set_pixel(color, static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            image.set_pixel(color, static_cast<std::size_t>(x), static_cast<std::size_t>(y));
         }
     }
-
-    return;
 }
 
-void Dither::reduce(std::string name_mapping_method, std::string name_palette, bool gamma_correction)
+void Dither::reduce(MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction)
 {
     const Transfer transfer(image.get_gamma());
     const Transfer* working_space = gamma_correction ? &transfer : nullptr;
@@ -225,17 +225,15 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
                 continue;
             }
 
-            const std::size_t nearest = palette.nearest_index(w.pixels[i], name_mapping_method, &range_map);
-            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            const std::size_t nearest = palette.nearest_index(w.pixels[i], mapping_method, &range_map);
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), x, y);
         }
     }
-
-    return;
 }
 
-void Dither::error_diffusion(std::string name_algorithm, std::string scan_pattern, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
+void Dither::error_diffusion(const std::string& name_algorithm, ScanPattern scan_pattern, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction)
 {
-    ErrorDiffusion error_diffusion = ErrorDiffusion(name_algorithm);
+    const ErrorDiffusion error_diffusion(name_algorithm);
     const Transfer transfer(image.get_gamma());
     const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
@@ -252,14 +250,14 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
     };
     std::vector<Tap> taps;
 
-    for(const auto& coordinate : error_diffusion.coordinates)
+    for(const ErrorDiffusion::Tap& tap : error_diffusion.taps)
     {
-        taps.push_back({coordinate.first, coordinate.second, static_cast<float>(error_diffusion.scalars.at(coordinate))});
+        taps.push_back({tap.dx, tap.dy, static_cast<float>(tap.scalar)});
     }
 
     const int image_width = static_cast<int>(w.width);
     const int image_height = static_cast<int>(w.height);
-    const bool serpentine = scan_pattern == "SERPENTINE";
+    const bool serpentine = scan_pattern == ScanPattern::SERPENTINE;
 
     for(int y = 0; y < image_height; y++)
     {
@@ -279,7 +277,7 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
 
             // set current pixel to nearest palette color (accounting for accumulated error)
             const RGBf value = w.pixels[i].clamped();
-            const std::size_t nearest = palette.nearest_index(value, name_mapping_method, &range_map);
+            const std::size_t nearest = palette.nearest_index(value, mapping_method, &range_map);
             const RGBf error = value - palette.get_working_at(nearest);
 
             for(const Tap& tap : taps)
@@ -301,14 +299,12 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
                 }
             }
 
-            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<std::size_t>(x), static_cast<std::size_t>(y));
         }
     }
-
-    return;
 }
 
-void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
+void Dither::ordered(const std::string& name_threshold_matrix, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction)
 {
     const Ordered ordered = Ordered(name_threshold_matrix);
     const Transfer transfer(image.get_gamma());
@@ -339,17 +335,26 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
             // offset each pixel by up to half a palette step either way, following the centred threshold
             const float threshold = thresholds[y % threshold_matrix_height][x % threshold_matrix_width];
             const RGBf value = w.pixels[i] + palette_pitch_vector * threshold;
-            const std::size_t nearest = palette.nearest_index(value, name_mapping_method, &range_map);
+            const std::size_t nearest = palette.nearest_index(value, mapping_method, &range_map);
 
-            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), x, y);
         }
     }
-
-    return;
 }
 
-void Dither::temporal(std::string name_temporal_method, std::size_t frames, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
+void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction)
 {
+    if(frames < 1)
+    {
+        throw DitherError("temporal dithering needs at least 1 frame");
+    }
+
+    // UNIFORM_HISTOGRAM is documented as not valid with -t (S6); CLI rejects it before this point
+    if(mapping_method == MappingMethod::UNIFORM_HISTOGRAM)
+    {
+        throw DitherError("Invalid mapping method for temporal dithering - " + std::string(enum_name(mapping_method)));
+    }
+
     const Transfer transfer(image.get_gamma());
     const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
@@ -365,26 +370,8 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
     const std::size_t image_frames = image.get_frames();
     const std::size_t palette_size = palette.size();
 
-    auto distance = [&](const RGBf& a, const RGBf& b) {
-        if(name_mapping_method == "EUCLIDEAN_DISTANCE")
-        {
-            return a.distance_euclidean(b);
-        }
-
-        if(name_mapping_method == "MANHATTAN_DISTANCE")
-        {
-            return a.distance_manhattan(b);
-        }
-
-        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
-        std::exit(EXIT_FAILURE);
-    };
-
-    if(name_temporal_method != "PWM" && name_temporal_method != "RANDOM")
-    {
-        std::cerr << "Error: Invalid temporal dithering method: " << name_temporal_method << std::endl;
-        std::exit(EXIT_FAILURE);
-    }
+    const bool manhattan = mapping_method == MappingMethod::MANHATTAN_DISTANCE;
+    auto distance = [manhattan](const RGBf& a, const RGBf& b) { return manhattan ? a.distance_manhattan(b) : a.distance_euclidean(b); };
 
     std::vector<double> weights;
 
@@ -393,17 +380,15 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
         for(std::size_t x = 0; x < w.width; x++)
         {
             const std::size_t i = w.index(x, y);
-            const unsigned int ux = static_cast<unsigned int>(x);
-            const unsigned int uy = static_cast<unsigned int>(y);
 
             // transparent pixels are copied unchanged into every frame
             if(w.transparent(i))
             {
-                const Color original = image.get_pixel(ux, uy, 0);
+                const Color original = image.get_pixel(x, y, 0);
 
                 for(std::size_t index_frame = 1; index_frame < image_frames; index_frame++)
                 {
-                    image.set_pixel(original, ux, uy, index_frame);
+                    image.set_pixel(original, x, y, index_frame);
                 }
 
                 continue;
@@ -411,7 +396,7 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
 
             const RGBf& color = w.pixels[i];
 
-            if(name_temporal_method == "PWM")
+            if(temporal_method == TemporalMethod::PWM)
             {
                 // modulate between the nearest darker and lighter palette colours
                 const int index_darker = palette.nearest_index_darker(color);
@@ -445,7 +430,7 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
                 {
                     const std::size_t chosen = dis(mt) < duty_cycle ? palette_index_lighter : palette_index_darker;
-                    image.set_pixel(output_color(palette, chosen, w.alpha[i]), ux, uy, index_frame);
+                    image.set_pixel(output_color(palette, chosen, w.alpha[i]), x, y, index_frame);
                 }
             }
             else
@@ -479,11 +464,9 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
 
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
                 {
-                    image.set_pixel(output_color(palette, dis_disc(mt), w.alpha[i]), ux, uy, index_frame);
+                    image.set_pixel(output_color(palette, dis_disc(mt), w.alpha[i]), x, y, index_frame);
                 }
             }
         }
     }
-
-    return;
 }

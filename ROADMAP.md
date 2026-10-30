@@ -15,14 +15,16 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 
 | Phase | State | Notes |
 |---|---|---|
-| 0.1 Build fixes | ✅ Done (30 Oct 2026) | Verified on GCC 13 / Linux. Not yet verified on MinGW. The new Makefile is in `Makefile.new` because the remote tools can't overwrite `Makefile`. |
+| 0.1 Build fixes | ✅ Done (30 Oct 2026) | Verified on GCC 13 / Linux. Not yet verified on MinGW. The new Makefile has since replaced `Makefile`. |
 | 0.2 Test harness | ✅ Done (30 Oct 2026) | `make test`: 1 pass, 8 expected failures, 0.3 s. |
 | 1.1–1.4 Quick correctness wins | ✅ Done (30 Oct 2026) | `make test`: 7 pass, 2 expected failures (B2, B3). Verified on GCC 13 / Linux; not yet on MinGW. |
 | 1.5 Release v1.0.1 | Not started | Rebuild `bin/dither.exe`, tag, CHANGELOG. |
 | 2.1 Convolution rewrite | ✅ Done (30 Oct 2026) | `make test`: 11 pass, 1 expected failure (B3). Verified on GCC 13 / Linux; not yet on MinGW. |
 | 3.1–3.4 Colour pipeline, gamma, thresholds, alpha | ✅ Done (30 Oct 2026) | `make test`: 18 pass, 0 expected failures. Verified on GCC 13 / Linux; not yet on MinGW. |
 | 3.5 Release v1.1.0 | Not started | Regenerate the README examples into `docs/examples/`. |
-| 4–6 | Not started | Part of 4.4 (merged raster/serpentine loops, signed coordinates) landed early in Phase 3. |
+| 4.1–4.6 Internal refactor | ✅ Done (30 Oct 2026) | `make test`: 23 pass, 0 expected failures, 0 first-party warnings (now with `-Wsign-conversion`). Output byte-identical to Phase 3 on 861 CLI runs. Verified on GCC 13 / Linux; not yet on MinGW. The remote tools can't write `Makefile`, so the Phase 4 Makefile is in `Makefile.new` (new object list, `-Wsign-conversion`). |
+| 4.7 Release v1.2.0 | Not started | Tag and CHANGELOG (no output changes; see "Phase 4 as built"). |
+| 5–6 | Not started | |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -282,7 +284,7 @@ This is an arithmetic fix only. Phase 5 decides what the method should do.
 
 ---
 
-## Phase 4 — Internal refactor → **v1.2.0**
+## Phase 4 — Internal refactor → **v1.2.0** ✅
 None of these tasks should change any output. Prove that by comparing Phase 3 outputs byte for byte before and after.
 
 ### 4.1 Enums instead of strings *(REVIEW §2.3, point 1)*
@@ -321,6 +323,53 @@ None of these tasks should change any output. Prove that by comparing Phase 3 ou
 - Print the time after `save()` and only if saving succeeded, or time load, processing and save separately.
 - Optionally show the time for each operation.
 - Make the accessors `const` and fix the stale include comment (done in 0.1).
+
+### Phase 4 as built (30 Oct 2026)
+**Output check:** 885 CLI runs (every preset, mapping method, scan pattern and threshold matrix, with and without `-a`, on `boat.png`, an RGBA image with transparent pixels and a PNG with a `gAMA` chunk, plus combined operations and GIF output). All 861 outputs the Phase 3 build produced are **byte-identical**. The other 18 runs used a threshold CSV with a trailing blank line, which Phase 3 rejected and Phase 4 accepts on purpose (4.4); they match the same matrix without the blank line. Temporal output is random, so only its exit codes were compared. The new `outputs_unchanged` test keeps 45 of these comparisons as pixel hashes taken from the Phase 3 build.
+
+- **4.1 Enums (REVIEW §2.3 point 1):**
+  - New `include/options.h`: `MappingMethod`, `ScanPattern` and `TemporalMethod`, plus `parse_enum<E>()`, `enum_name()` and `enum_names<E>()` driven by one name table per enum.
+  - `CLI::parse` turns the text into enums once, and `Dither`, `Palette::nearest_index` and `temporal` take enums. No string is compared per pixel any more.
+  - The error-diffusion algorithm is also checked in `CLI::parse` now, so a bad name is rejected before the image is loaded.
+  - Algorithm, kernel, threshold matrix and palette stay strings, because each can also be a CSV path.
+- **4.2 Static tables (§2.3 point 3):**
+  - Every preset table lives in its own `.cpp` as a function-local `static const`, built once on first use: `src/grayscale.cpp`, `src/convolve.cpp`, `src/error_diffusion.cpp`, `src/palette.cpp` and `src/ordered.cpp`. The headers only declare the classes, plus `has_preset()` and `preset_names()`.
+  - Threshold matrices use **option (b)**: Bayer matrices come from `Ordered::bayer(n)` with the recursive formula, and the 16 noise matrices are `std::uint8_t` arrays in the generated `src/ordered_tables.cpp`. Only the requested matrix is expanded.
+  - `ErrorDiffusion` is now a list of `{dx, dy, scalar}` taps. `PairHash` and the coordinate/scalar maps are gone.
+  - **Results:** `dither.o` is 48 KB (1.75 MB before) and `bin/dither` 0.8 MB (2.1 MB). Compiling `dither.cpp` takes 1.6 s (8.6 s). After touching `ordered.h`, a rebuild takes 3.7 s (11.7 s). cxxopts is now included only by `cli.cpp`, not by `main.cpp`. A serial clean build still takes about 29 s, because `cli.cpp` (cxxopts, 10 s) and lodepng dominate it.
+- **4.3 Exceptions (§2.3 point 4):**
+  - New `include/error.h` with `DitherError`. Everything below `main` now throws instead of calling `std::exit`: `Color`, `Palette`, `Convolve`, `Grayscale`, `Ordered`, `ErrorDiffusion`, `Image::load`/`save`, `Dither::temporal` and `CLI::parse`.
+  - `main` catches the error, prints `Error: <message>` and returns 1. `-h` sets `CLI::help` instead of exiting.
+  - `Image::load`/`save` and `Dither::load`/`save` now return `void` and throw.
+  - Every bad input gives the same exit code as before. Messages are the same or clearer: CSV errors name the file and line.
+  - New in-process test `library_errors_throw` (17 cases). The test runner now catches an exception escaping a test and reports it as a failure instead of aborting the run.
+- **4.4 Shared CSV parser (§2.3 point 6):**
+  - New `csv::read_matrix()` (`include/csv.h`, `src/csv.cpp`) is used for kernels, threshold matrices and grayscale weights.
+  - It ignores blank lines, including trailing ones, and Windows line endings, and allows spaces and a leading `+`. A value is rejected unless the whole token parses as a number; before, `stod` accepted `"1.5abc"`.
+  - Threshold values must be whole numbers from 0 to 255. Before, `"12.7"` was silently truncated to 12.
+  - The grayscale CSV must be exactly one row of three values. Before, extra lines were ignored.
+  - New test `csv_matrix_parser`.
+- **4.5 Speed (Q5):**
+  - The old `Color` distance functions, with their per-call default `std::vector`, are removed, along with `Color::add`, `equals`, `get_lightness`, `expand_range` and `grayscale_value`.
+  - Grayscale weights are a `std::array<double, 3>` passed by `const&`. Every `Dither` method takes `const std::string&`.
+  - `Color::CHANNEL_MAX` is now `int`, as 1.1 planned. `HEX_MAX` is `unsigned`.
+  - `Image` getters are `const` and use `size_t` indices.
+  - **Result:** the median whole run on `boat.png` is 4–11 ms faster: Floyd–Steinberg to `SLSO8` takes 67 ms (78 before) and `BLUE_NOISE_256X256` 68 ms (78), mostly because the tables are no longer rebuilt on every construction. The error-diffusion step on its own is about 16 ms, the same as Phase 3, because Phase 3 already removed the per-pixel copies.
+- **4.6 Benchmark (Q11):**
+  - `Benchmark` records named steps. `-b` now prints `load`, each operation in the order it ran, `save`, then `processing` (the operations only) and `total`.
+  - The report is printed only after a successful save. With no operations, `processing` reads "no operations".
+  - The accessors are `const`, and the tabs/spaces mix is gone.
+  - The `-b` help text says what is timed.
+  - New CLI test `benchmark_report`.
+- **Also:**
+  - `-Wsign-conversion` is now on, as 0.1 suggested; a clean build gives **0** first-party warnings.
+  - First-party headers use `#pragma once` instead of reserved `__NAME_H` guards (REVIEW Q8).
+  - `Image` no longer has the unused `Image(frames)`/`reset()`; `Dither()` no longer takes a frame count.
+- **Tests:** 23 pass, 0 expected failures, under 1 s. There are 5 new tests (`outputs_unchanged`, `enum_names_round_trip`, `library_errors_throw`, `csv_matrix_parser`, `benchmark_report`), and `ed_kernel_sums` was rewritten for taps: each tap must point forward and be used once. Mutation-checked: changing one Floyd–Steinberg scalar, the blank-line handling or the benchmark report each makes the matching test fail.
+- **Not done:**
+  - Making a `Dither` method return `std::expected` instead of throwing; exceptions were simpler with no output change.
+  - Moving the duplicated "-r/-e/-d/-t share one palette slot" logic; that is D2 in Phase 5.
+  - Checking the MinGW build. Please run `make clean && make test` on Windows once.
 
 ---
 
@@ -367,8 +416,9 @@ These are README edits. They can be done at any time, but should match each rele
 | S14, S15 | Fix the "threshold matrixes" and "convolution kernels" copy-paste wording |
 | S16 | Finish the "Why use Dither" list (temporal dithering, serpentine scanning, blue noise, Lospec CSVs) |
 | S17 | State the minimum GCC version (13+; 0.1 has landed) |
+| 4.4 | CSV formats: blank lines and Windows line endings are fine; threshold values must be whole numbers 0–255; grayscale weights are one row of three values |
 | S20 | Describe PWM accurately (after 5.3) |
-| Q11 | Say what `--benchmark` times |
+| Q11 | Describe the `-b` output: `load`, each operation, `save`, `processing` and `total`, printed after a successful save |
 | — | Add a "Testing" section (`make test`, `XFAIL`/`TEST`, `-v`) and a CHANGELOG link |
 
 ---
@@ -397,7 +447,7 @@ These are README edits. They can be done at any time, but should match each rele
 | 6 | 1.4 Input validation (B6) | M |
 | 7 | ~~2.1 Convolution (B2)~~ ✅ | M |
 | 8 | ~~3.1–3.4 Float pipeline, gamma, threshold centring, alpha (B3, Q1, Q2, Q3, Q6)~~ ✅ | L |
-| 9 | 4.1–4.6 Refactor | L |
+| 9 | ~~4.1–4.6 Refactor~~ ✅ | L |
 | 10 | 5.x Spec decisions | M–L |
 | — | 6 Docs | S, done alongside each release |
 

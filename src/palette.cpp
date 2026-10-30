@@ -1,21 +1,49 @@
 #include "palette.h"
+#include "error.h"
+#include <algorithm> // std::min
+#include <charconv> // std::from_chars
+#include <cmath> // std::fabs, std::isnan
+#include <fstream> // std::ifstream
+#include <sstream> // std::stringstream
+#include <unordered_map> // std::unordered_map
 
-Palette::Palette(std::string name)
+namespace
 {
-    if(PRESET_PALETTES.contains(name))
+    // built once, on first use, and shared (ROADMAP 4.2)
+    const std::unordered_map<std::string, std::vector<Color>>& presets()
+    {
+        static const std::unordered_map<std::string, std::vector<Color>> PRESETS = {
+            {"1BIT_MONITOR_GLOW", {Color(0x222323), Color(0xf0f6f0)}},
+            {"NOIRE_TRUTH", {Color(0x1e1c32), Color(0xc6baac)}},
+            {"TITANSTONE", {Color(0x150413), Color(0x635c6d), Color(0xffffd1)}},
+            {"ICE_CREAM_GB", {Color(0x7c3f58), Color(0xeb6b6f), Color(0xf9a875), Color(0xfff6d3)}},
+            {"MIST_GB", {Color(0x2d1b00), Color(0x1e606e), Color(0x5ab9a8), Color(0xc4f0c2)}},
+            {"CRIMSON", {Color(0x1b0326), Color(0x7a1c4b), Color(0xba5044), Color(0xeff9d6)}},
+            {"FIERY_PLAGUE_GB", {Color(0x1a2129), Color(0x312137), Color(0x512839), Color(0x713141)}},
+            {"TWILIGHT5", {Color(0x292831), Color(0x333f58), Color(0x4a7a96), Color(0xee8695), Color(0xfbbbad)}},
+            {"OIL6", {Color(0x272744), Color(0x494d7e), Color(0x8b6d9c), Color(0xc69fa5), Color(0xf2d3ab), Color(0xfbf5ef)}},
+            {"MIDNIGHT_ABLAZE", {Color(0x130208), Color(0x1f0510), Color(0x31051e), Color(0x460e2b), Color(0x7c183c), Color(0xd53c6a), Color(0xff8274)}},
+            {"SLSO8", {Color(0x0d2b45), Color(0x203c56), Color(0x544e68), Color(0x8d697a), Color(0xd08159), Color(0xffaa5e), Color(0xffd4a3), Color(0xffecd6)}},
+        };
+
+        return PRESETS;
+    }
+}
+
+Palette::Palette(const std::string& name)
+{
+    if(const auto it = presets().find(name); it != presets().end())
     {
         this->name = name;
-        this->colors = PRESET_PALETTES.at(name);
+        this->colors = it->second;
     }
     else
     {
-        std::ifstream file;
-        file.open(name);
-        
+        std::ifstream file(name);
+
         if(!file.is_open())
         {
-            std::cerr << "Error: Invalid palette argument - " << name << std::endl;
-            std::exit(EXIT_FAILURE);
+            throw DitherError("Invalid palette argument - " + name);
         }
 
         std::string line;
@@ -31,7 +59,7 @@ Palette::Palette(std::string name)
         }
 
         std::stringstream ss(line);
-        
+
         while(std::getline(ss, token, ','))
         {
             tokens.push_back(token);
@@ -40,39 +68,52 @@ Palette::Palette(std::string name)
         // Lospec format: name,author,color,color,...
         if(tokens.size() < 3)
         {
-            std::cerr << "Error: Palette file has no colors (expected name,author,color,...) - " << name << std::endl;
-            std::exit(EXIT_FAILURE);
+            throw DitherError("Palette file has no colors (expected name,author,color,...) - " + name);
         }
 
         this->name = tokens[0];
 
         for(std::size_t index_tokens = 2; index_tokens < tokens.size(); index_tokens++)
         {
-            int hex_value;
+            // tolerate spaces around a value
+            std::string_view hex = tokens[index_tokens];
+            hex.remove_prefix(std::min(hex.find_first_not_of(" \t"), hex.size()));
+            hex.remove_suffix(hex.size() - std::min(hex.find_last_not_of(" \t") + 1, hex.size()));
+            unsigned int hex_value = 0;
+            const auto [ptr, ec] = std::from_chars(hex.data(), hex.data() + hex.size(), hex_value, 16);
 
-            try
+            if(hex.empty() || ec == std::errc::invalid_argument || ptr != hex.data() + hex.size())
             {
-                hex_value = std::stoi(tokens[index_tokens], nullptr, 16);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << "Error: Invalid palette value - " << tokens[index_tokens] << std::endl;
-                std::exit(EXIT_FAILURE);
+                throw DitherError("Invalid palette value - " + tokens[index_tokens]);
             }
 
-            if(hex_value < 0 || hex_value > static_cast<int>(Color::HEX_MAX))
+            if(ec == std::errc::result_out_of_range || hex_value > Color::HEX_MAX)
             {
-                std::cerr << "Error: Palette value is out of color hex code range (0-ffffff) - " << hex_value << std::endl;
-                std::exit(EXIT_FAILURE);
+                throw DitherError("Palette value is out of color hex code range (0-ffffff) - " + tokens[index_tokens]);
             }
-            
+
             colors.push_back(Color(hex_value));
         }
     }
 
     set_working_space(nullptr);
+}
 
-    return;
+bool Palette::has_preset(std::string_view name)
+{
+    return presets().contains(std::string(name));
+}
+
+std::vector<std::string> Palette::preset_names()
+{
+    std::vector<std::string> names;
+
+    for(const auto& [name, _] : presets())
+    {
+        names.push_back(name);
+    }
+
+    return names;
 }
 
 std::size_t Palette::size() const
@@ -135,15 +176,18 @@ RGBf Palette::RangeMap::apply(const RGBf& c) const
     };
 }
 
-std::size_t Palette::nearest_index(const RGBf& input, const std::string& mapping_method, const RangeMap* range_map) const
+std::size_t Palette::nearest_index(const RGBf& input, MappingMethod mapping_method, const RangeMap* range_map) const
 {
     std::size_t index_nearest = 0;
     double distance_nearest = std::numeric_limits<double>::infinity();
     const std::size_t colors_size = working.size();
 
-    if(mapping_method == "EUCLIDEAN_DISTANCE" || mapping_method == "UNIFORM_HISTOGRAM")
+    switch(mapping_method)
     {
-        const RGBf target = (mapping_method == "UNIFORM_HISTOGRAM" && range_map) ? range_map->apply(input) : input;
+    case MappingMethod::EUCLIDEAN_DISTANCE:
+    case MappingMethod::UNIFORM_HISTOGRAM:
+    {
+        const RGBf target = (mapping_method == MappingMethod::UNIFORM_HISTOGRAM && range_map) ? range_map->apply(input) : input;
 
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
@@ -155,9 +199,10 @@ std::size_t Palette::nearest_index(const RGBf& input, const std::string& mapping
                 index_nearest = index_palette;
             }
         }
+
+        break;
     }
-    else if(mapping_method == "MANHATTAN_DISTANCE")
-    {
+    case MappingMethod::MANHATTAN_DISTANCE:
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
             const double distance = input.distance_manhattan(working[index_palette]);
@@ -168,11 +213,8 @@ std::size_t Palette::nearest_index(const RGBf& input, const std::string& mapping
                 index_nearest = index_palette;
             }
         }
-    }
-    else
-    {
-        std::cerr << "Error: Invalid palette mapping method - " << mapping_method << std::endl;
-        std::exit(EXIT_FAILURE);
+
+        break;
     }
 
     return index_nearest;
@@ -272,7 +314,7 @@ Palette::RangeMap Palette::range_map(const RGBf& image_min, const RGBf& image_ma
     };
 }
 
-std::string Palette::to_string()
+std::string Palette::to_string() const
 {
     std::string output = name + "\n";
     std::size_t colors_size = colors.size();

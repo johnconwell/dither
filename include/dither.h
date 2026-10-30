@@ -1,35 +1,25 @@
-#ifndef __DITHER_H
-#define __DITHER_H
+#pragma once
 
-#include "convolve.h"
-#include "error_diffusion.h"
-#include "grayscale.h"
 #include "image.h"
-#include "ordered.h"
-#include "palette.h"
-#include <algorithm> // std::clamp
-#include <cmath> // std::lround
-#include <limits> // std::numeric_limits
-#include <random> // std::random_device, std::mt19337, std::uniform_reaL_distribution
-#include <unordered_map> // std::unordered_map
-#include <vector> // std::vector
+#include "options.h"
+#include <cstddef> // std::size_t
+#include <string> // std::string
 
+// Facade over the image operations. Preset names may also be csv file paths (see README).
+// Every method throws DitherError on bad input.
 class Dither
 {
 public:
-    Dither(std::size_t frames = 1);
+    void load(const std::string& file_name);
+    void save(const std::string& file_name) const;
 
-    std::size_t load(const char* file_name);
-    std::size_t save(const char* file_name);
-
-    void grayscale(std::string name_grayscale_weights, bool gamma_correction);
-    void convolve(std::string name_kernel);
-    void reduce(std::string name_mapping_method, std::string name_palette, bool gamma_correction);
-    void error_diffusion(std::string name_algorithm, std::string scan_pattern, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
-    void ordered(std::string name_threshold_matrix, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
-    void temporal(std::string name_temporal_method, std::size_t frames, std::string name_mapping_method, std::string name_palette, bool gamma_correction);
+    void grayscale(const std::string& name_grayscale_weights, bool gamma_correction);
+    void convolve(const std::string& name_kernel);
+    void reduce(MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
+    void error_diffusion(const std::string& name_algorithm, ScanPattern scan_pattern, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
+    void ordered(const std::string& name_threshold_matrix, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
+    // mapping_method must be EUCLIDEAN_DISTANCE or MANHATTAN_DISTANCE; frames must be at least 1
+    void temporal(TemporalMethod temporal_method, std::size_t frames, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
 
     Image image;
 };
-
-#endif
