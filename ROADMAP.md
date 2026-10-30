@@ -26,7 +26,7 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 | 4.7 Release v1.2.0 | Not started | Tag and CHANGELOG (no output changes; see "Phase 4 as built"). |
 | 5.1–5.5 Spec decisions | ✅ Done (30 Oct 2026) | Decisions D1 (option B), D2, D4 and D5 taken. `make test`: 28 pass, 0 expected failures, 0 first-party warnings. 420 of 424 Phase 4 outputs byte-identical; the other 4 are `-c` with `-a` (D4, intended). Verified on GCC 13 / Linux; not yet on MinGW. |
 | 5.6 Release v2.0.0 | Not started | Tag and CHANGELOG; see "Phase 5 as built" for the user-visible changes. |
-| 6 Documentation | Partly done | The README entries for the Phase 5 behaviour are done (see the Phase 6 table); the rest is not started. |
+| 6 Documentation | ✅ Done (30 Oct 2026) | Every row of the Phase 6 table is done except the CHANGELOG link, which waits for a CHANGELOG (1.5 / 3.5 / 4.7 / 5.6). See "Phase 6 as built". |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -446,22 +446,32 @@ These are README edits. They can be done at any time, but should match each rele
 
 | Item | Edit |
 |---|---|
-| S2 | Error diffusion syntax → `-e ALGORITHM,SCAN_PATTERN,MAPPING_METHOD,PALETTE` |
-| S3 | `--error-diffusion` → `--error_diffusion`, or add the hyphenated forms as aliases in cxxopts |
-| S4 | Add `-o OUTPUT_FILE_PATH` to the temporal syntax line |
-| S7, S8 | Document the BT.709-weighted Euclidean distance and describe Manhattan as L1. Consider an optional `UNWEIGHTED_EUCLIDEAN` |
-| S10 | Correct the 8×8 Bayer claim (64 levels; 16×16 has all 256) |
-| S11 | Define `-a` as "process in linear light", and list which operations use it. ✅ *The CLI table row is done (Phase 5); a short explanation section is still to do.* |
+| S2 | ✅ Error diffusion syntax → `-e ALGORITHM,SCAN_PATTERN,MAPPING_METHOD,PALETTE` |
+| S3 | ✅ `--error-diffusion` → `--error_diffusion`, or add the hyphenated forms as aliases in cxxopts |
+| S4 | ✅ Add `-o OUTPUT_FILE_PATH` to the temporal syntax line |
+| S7, S8 | ✅ Document the BT.709-weighted Euclidean distance and describe Manhattan as L1. Consider an optional `UNWEIGHTED_EUCLIDEAN` |
+| S10 | ✅ Correct the 8×8 Bayer claim (64 levels; 16×16 has all 256) |
+| S11 | Define `-a` as "process in linear light", and list which operations use it. ✅ *The CLI table row was done in Phase 5; the Gamma Correction section in Phase 6.* |
 | S13 | ✅ Document the fixed order operations run in, and the D2 outcome *(done in Phase 5)* |
-| S14, S15 | Fix the "threshold matrixes" and "convolution kernels" copy-paste wording |
-| S16 | Finish the "Why use Dither" list (temporal dithering, serpentine scanning, blue noise, Lospec CSVs) |
-| S17 | State the minimum GCC version (13+; 0.1 has landed) |
-| 4.4 | CSV formats: blank lines and Windows line endings are fine; threshold values must be whole numbers 0–255; grayscale weights are one row of three values |
+| S14, S15 | ✅ Fix the "threshold matrixes" and "convolution kernels" copy-paste wording |
+| S16 | ✅ Finish the "Why use Dither" list (temporal dithering, serpentine scanning, blue noise, Lospec CSVs) |
+| S17 | ✅ State the minimum GCC version (13+; 0.1 has landed) |
+| 4.4 | ✅ CSV formats: blank lines and Windows line endings are fine; threshold values must be whole numbers 0–255; grayscale weights are one row of three values |
 | S18 | ✅ Use the `JARVIS_JUDICE_NINKE` spelling and mention the alias *(done in Phase 5)* |
 | S5 | ✅ Describe `UNIFORM_HISTOGRAM` as histogram equalisation *(done in Phase 5)* |
 | S20 | ✅ Describe PWM accurately, and `STOCHASTIC_PWM` *(done in Phase 5)* |
-| Q11 | Describe the `-b` output: `load`, each operation, `save`, `processing` and `total`, printed after a successful save |
-| — | Add a "Testing" section (`make test`, `XFAIL`/`TEST`, `-v`) and a CHANGELOG link |
+| Q11 | ✅ Describe the `-b` output: `load`, each operation, `save`, `processing` and `total`, printed after a successful save |
+| — | ✅ Add a "Testing" section (`make test`, `XFAIL`/`TEST`, `-v`). *The CHANGELOG link is still to do: there is no CHANGELOG yet.* |
+
+### Phase 6 as built (30 Oct 2026)
+README edits only, in the existing style; no code changed. Every heading the tests parse is unchanged, and the preset names `preset_names_resolve` reads from the five tables are identical.
+- **Syntax (S2, S3, S4):** the error diffusion line has `SCAN_PATTERN` and the correct `--error_diffusion` spelling, and links the scan pattern table; the temporal line has `-o OUTPUT_FILE_PATH` and states the 1–256 frame range.
+- **Output formats (S12):** "input and output files must be .png" now reads "the input file must be .png; the output file may be .png or .gif", matching 1.4. The `-o` row says png or gif.
+- **New sections:** *Gamma Correction* (S11: what linear light means, the black/white blur giving 188, the `gAMA`/`sRGB` chunk rule, which operations it applies to), *Benchmark* (Q11) and *Testing* (`make test`, `TEST`/`XFAIL`/`XPASS`, `-v`, running named tests). The `-a` and `-b` rows link to them.
+- **Tables:** Euclidean is described as BT.709-weighted and Manhattan as unweighted L1 (S7, S8), with a note that `-a` measures distance in linear light; `RANDOM` states the 1/distance weights and the exact-match case (S19); the Temporal Dithering Methods table has an intro sentence (S14).
+- **Wording:** "threshold matrixes" (S14, S15), the Bayer levels sentence (S10), GCC 13 or newer (S17), CSV rules for blank lines, CRLF, whole-number thresholds and one-row grayscale weights (4.4), and the "noticalbe" typo.
+- **Why use Dither (S16):** blue noise matrixes and CSV threshold matrixes, temporal dithering, and histogram-equalised mapping. Serpentine scanning was left out, because it isn't clearly something ImageMagick lacks.
+- **Not done:** the CHANGELOG link (no CHANGELOG exists yet), the optional `UNWEIGHTED_EUCLIDEAN` method, and cxxopts aliases for the hyphenated flags (the README now uses the real spelling instead). The README examples still have no reference images (3.5).
 
 ---
 
