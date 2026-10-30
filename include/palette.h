@@ -3,6 +3,7 @@
 
 #include "color.h" // Color structure
 #include <climits> // INT_MAX
+#include <limits> // std::numeric_limits
 #include <cmath> // std::abs()
 #include <cstdlib> // std::exit
 #include <fstream> // std::ifstream
@@ -41,6 +42,11 @@ public:
     int nearest_index_darker(Color input);
     Color pitch_vector();
     std::vector<Color> get_color_range();
+
+    // UNIFORM_HISTOGRAM: per-channel slope that stretches image_range onto palette_range;
+    // a channel that is flat in the image gets UNMAPPED and is passed through unchanged
+    static inline const double UNMAPPED = std::numeric_limits<double>::quiet_NaN();
+    static std::vector<double> range_slope(const std::vector<Color>& image_range, const std::vector<Color>& palette_range);
 
     std::string to_string();
 

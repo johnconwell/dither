@@ -56,7 +56,7 @@ int main(int argc, const char* argv[])
 
     if(cli.temporal)
     {
-        dither.temporal(cli.temporal_method, std::stoi(cli.temporal_frames), cli.mapping_method, cli.palette, cli.gamma_correction);
+        dither.temporal(cli.temporal_method, cli.temporal_frame_count, cli.mapping_method, cli.palette, cli.gamma_correction);
     }
 
     if(cli.benchmark)

@@ -2,6 +2,10 @@
 #define __CLI_H
 
 #include "cxxopts.hpp"
+#include <algorithm> // std::transform
+#include <cctype> // std::tolower
+#include <charconv> // std::from_chars
+#include <filesystem> // std::filesystem::path
 #include <cstdlib> // std::exit
 #include <iostream> // std::cerr, std::endl
 #include <string> // std::string
@@ -12,6 +16,8 @@ public:
     CLI();
     bool parse(int argc, const char* argv[]);
     std::string to_string();
+
+    static inline constexpr std::size_t TEMPORAL_FRAMES_MAX = 256;
 
     std::string file_path_input;
     std::string file_path_output;
@@ -29,9 +35,13 @@ public:
     bool temporal;
     std::string temporal_method;
     std::string temporal_frames;
+    std::size_t temporal_frame_count;
     std::string mapping_method;
     std::string palette;
     bool benchmark;
+
+private:
+    bool validate();
 };
 
 #endif

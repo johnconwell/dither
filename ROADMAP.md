@@ -17,7 +17,9 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 |---|---|---|
 | 0.1 Build fixes | ✅ Done (30 Oct 2026) | Verified on GCC 13 / Linux. Not yet verified on MinGW. The new Makefile is in `Makefile.new` because the remote tools can't overwrite `Makefile`. |
 | 0.2 Test harness | ✅ Done (30 Oct 2026) | `make test`: 1 pass, 8 expected failures, 0.3 s. |
-| 1–6 | Not started | |
+| 1.1–1.4 Quick correctness wins | ✅ Done (30 Oct 2026) | `make test`: 7 pass, 2 expected failures (B2, B3). Verified on GCC 13 / Linux; not yet on MinGW. |
+| 1.5 Release v1.0.1 | Not started | Rebuild `bin/dither.exe`, tag, CHANGELOG. |
+| 2–6 | Not started | |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -131,6 +133,34 @@ This is an arithmetic fix only. Phase 5 decides what the method should do.
   - In `temporal`, for `RANDOM`: if any distance is 0, give that palette colour 100% probability.
   - Fix the `-g` help text and the "the the" typos (Q9).
 - **Done when:** `cli_rejects_bad_input` passes, and every row of the B6 table in REVIEW.md gives either a correct result or a non-zero exit with a clear message.
+
+### Phase 1 as built (30 Oct 2026)
+- **1.1 (B1):** a local `constexpr int CHANNEL_MAX` keeps the offset arithmetic signed. `boat.png` with `BAYER_8X8` → `1BIT_MONITOR_GLOW` now gives a white fraction of 0.452. Making the `Color` constants `int` is left for Phase 4.
+- **1.2 (B5):** key renamed to `WHITE_NOISE_64X64`.
+- **1.3 (B4):**
+  - New `Color::expand_range()` (independent min/max per channel) replaces the duplicated `else if` blocks in `Image` and `Palette`.
+  - New `Palette::range_slope()` replaces the three copied slope blocks in `dither.cpp`. A flat channel gets the slope `Palette::UNMAPPED` (NaN), and `Palette::nearest` passes that channel through unchanged.
+  - The G and B channels now use their own slopes.
+- **1.4 (B6, S6, S12, Q9, Q10):**
+  - New private `CLI::validate()` runs at the end of `parse`. It checks:
+    - the output extension (`.png` or `.gif`, case-insensitive; `.gif` stays allowed for every operation);
+    - the scan pattern and the temporal method;
+    - the mapping method, which must be Euclidean or Manhattan for `-t`, so `UNIFORM_HISTOGRAM` is rejected there;
+    - the frame count, parsed with `std::from_chars` into a new `temporal_frame_count`, range 1–256.
+  - `main` uses `temporal_frame_count` instead of `std::stoi`.
+  - The garbage line in the `--reduce` error message is removed.
+  - `Palette`: rejects a CSV with fewer than 3 fields (empty file or no colours) and strips a trailing `\r`. `pitch_vector()` returns zero for a 1-colour palette, and `sort()` no longer underflows.
+  - `Image::save`:
+    - decides the format by extension instead of `contains` (Q10);
+    - returns non-zero for unknown formats and for 0 frames;
+    - checks `GifBegin` and every `GifWriteFrame`;
+    - writes its errors to stderr.
+  - `temporal`: PWM distances are initialised and an unknown method exits with an error. For `RANDOM`, an exact palette match gets 100% probability instead of an `inf` weight.
+  - Threshold CSV values outside 0–255 are rejected. This was planned for 4.4, but `cli_rejects_bad_input` needs it now.
+  - Help text fixed for `-a` and `-g` (Q9). `CLI::to_string` was missing the `temporal:` label.
+- **Tests:** the six fixed tests changed from `XFAIL` to `TEST`.
+- **Regression check:** error diffusion (raster and serpentine, with and without `-a`), reduce and grayscale output is byte-identical to the previous build. Only ordered output changed, as intended.
+- **Warnings:** a clean build now gives 64 first-party warnings, down from 71.
 
 ### 1.5 Release v1.0.1
 - Rebuild `bin/dither.exe`, tag the release, and add a short CHANGELOG entry.

@@ -344,7 +344,7 @@ namespace
 // colour, dithered with BAYER_8X8, should come out 25%, 50% and 75% light.
 // (50% alone can't catch B1: forcing every negative-offset cell to the darkest
 // colour happens to be the right answer exactly at the midpoint.)
-XFAIL(ordered_grey_coverage, "B1: int x size_t underflow in Dither::ordered")
+TEST(ordered_grey_coverage)
 {
     const Color dark(0x222323), light(0xf0f6f0);
 
@@ -428,7 +428,7 @@ XFAIL(gamma_linear_coverage, "B3: pixels linearised but palette left in sRGB")
 
 // [200, 100] and [100, 200] are the same data in a different order, so they must
 // map to mirrored results, one dark pixel and one light pixel.
-XFAIL(uniform_hist_order_independent, "B4: min/max search uses else-if, so descending data breaks the range")
+TEST(uniform_hist_order_independent)
 {
     auto two = [](unsigned char a, unsigned char b) {
         return [=](unsigned x, unsigned) { const unsigned char v = x == 0 ? a : b; return RGBA{v, v, v, 255}; };
@@ -445,7 +445,7 @@ XFAIL(uniform_hist_order_independent, "B4: min/max search uses else-if, so desce
 
 // A solid image has no range to stretch, so UNIFORM_HISTOGRAM should behave like
 // plain nearest-colour mapping instead of dividing by zero.
-XFAIL(uniform_hist_flat_channel, "B4: slope divides by zero when a channel is flat")
+TEST(uniform_hist_flat_channel)
 {
     const fs::path p = write_png("solid.png", 4, 4, [](unsigned, unsigned) { return RGBA{100, 150, 200, 255}; });
     Dither uh = load(p);
@@ -457,7 +457,7 @@ XFAIL(uniform_hist_flat_channel, "B4: slope divides by zero when a channel is fl
 }
 
 // Every preset name in the README tables must exist in the matching built-in table.
-XFAIL(preset_names_resolve, "B5: WHITE_NOISE_64X64 is keyed as WHITE_NOISE_64X46")
+TEST(preset_names_resolve)
 {
     const Grayscale gray("STANDARD");
     const Convolve conv("BOX_BLUR");
@@ -492,7 +492,7 @@ XFAIL(preset_names_resolve, "B5: WHITE_NOISE_64X64 is keyed as WHITE_NOISE_64X46
 }
 
 // Every built-in threshold matrix should equal its CSV in data/threshold_matrixes/.
-XFAIL(presets_match_csv, "B5: WHITE_NOISE_64X64 preset is missing (misspelled key)")
+TEST(presets_match_csv)
 {
     const Ordered presets("BAYER_2X2");
     const fs::path dir = fs::path("data") / "threshold_matrixes";
@@ -556,7 +556,7 @@ TEST(ed_kernel_sums)
 
 // The B6 inputs from REVIEW.md: each must either be rejected (non-zero exit, a
 // readable message, no crash) or, where the input is legitimate, succeed correctly.
-XFAIL(cli_rejects_bad_input, "B6: several inputs crash, read garbage or exit 0")
+TEST(cli_rejects_bad_input)
 {
     if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
     {

@@ -132,3 +132,19 @@ std::string Color::to_string_hex()
     std::string output = ss.str();
     return output;
 }
+
+void Color::expand_range(std::vector<Color>& range) const
+{
+    const std::size_t INDEX_COLOR_MIN = 0;
+    const std::size_t INDEX_COLOR_MAX = 1;
+
+    // independent ifs (not else-if): the first value seen must be able to set both the min and the max (B4)
+    range[INDEX_COLOR_MIN].r = std::min(range[INDEX_COLOR_MIN].r, r);
+    range[INDEX_COLOR_MAX].r = std::max(range[INDEX_COLOR_MAX].r, r);
+    range[INDEX_COLOR_MIN].g = std::min(range[INDEX_COLOR_MIN].g, g);
+    range[INDEX_COLOR_MAX].g = std::max(range[INDEX_COLOR_MAX].g, g);
+    range[INDEX_COLOR_MIN].b = std::min(range[INDEX_COLOR_MIN].b, b);
+    range[INDEX_COLOR_MAX].b = std::max(range[INDEX_COLOR_MAX].b, b);
+
+    return;
+}

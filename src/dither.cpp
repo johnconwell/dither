@@ -137,8 +137,6 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
     Palette palette = Palette(name_palette);
     const std::size_t image_height = image.get_height();
     const std::size_t image_width = image.get_width();
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
     std::vector<Color> color_range_image;
     std::vector<Color> color_range_palette;
     std::vector<double> slope;
@@ -147,11 +145,7 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
     {
         color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
-        slope = {
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].g - color_range_palette[INDEX_COLOR_MIN].g) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].g - color_range_image[INDEX_COLOR_MIN].g),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].b - color_range_palette[INDEX_COLOR_MIN].b) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].b - color_range_image[INDEX_COLOR_MIN].b),
-        };
+        slope = Palette::range_slope(color_range_image, color_range_palette);
     }
 
     for(std::size_t y = 0; y < image_height; y++)
@@ -181,8 +175,6 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
     const std::size_t image_height = image.get_height();
     const std::size_t image_width = image.get_width();
     std::vector<std::vector<std::vector<int>>> error_matrix(image_height, std::vector<std::vector<int>>(image_width, std::vector<int>(Color::NUM_BYTES - 1, 0)));
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
     std::vector<Color> color_range_image;
     std::vector<Color> color_range_palette;
     std::vector<double> slope;
@@ -191,11 +183,7 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
     {
         color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
-        slope = {
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].g - color_range_palette[INDEX_COLOR_MIN].g) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].g - color_range_image[INDEX_COLOR_MIN].g),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].b - color_range_palette[INDEX_COLOR_MIN].b) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].b - color_range_image[INDEX_COLOR_MIN].b),
-        };
+        slope = Palette::range_slope(color_range_image, color_range_palette);
     }
 
     for(std::size_t y = 0; y < image_height; y++)
@@ -307,8 +295,6 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
 
     const Color palette_pitch_vector = palette.pitch_vector();
     const int color_channel_max_half = Color::CHANNEL_MAX / 2;
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
     std::vector<Color> color_range_image;
     std::vector<Color> color_range_palette;
     std::vector<double> slope;
@@ -317,11 +303,7 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
     {
         color_range_image = image.get_color_range(gamma_correction);
         color_range_palette = palette.get_color_range();
-        slope = {
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].r - color_range_palette[INDEX_COLOR_MIN].r) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].r - color_range_image[INDEX_COLOR_MIN].r),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].g - color_range_palette[INDEX_COLOR_MIN].g) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].g - color_range_image[INDEX_COLOR_MIN].g),
-            static_cast<double>(color_range_palette[INDEX_COLOR_MAX].b - color_range_palette[INDEX_COLOR_MIN].b) / static_cast<double>(color_range_image[INDEX_COLOR_MAX].b - color_range_image[INDEX_COLOR_MIN].b),
-        };
+        slope = Palette::range_slope(color_range_image, color_range_palette);
     }
 
     for(std::size_t y = 0; y < image_height; y++)
@@ -339,11 +321,14 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
             // normalize the threshold value by subtracting half the color channel range (normalized values should range from -127 to 128)
             const int threshold_value_scaled = threshold_value - color_channel_max_half;
             // create a color offset at each position that is the average spread in the color space (palette_pitch_vector / color_channel_max) multiplied by the normalized threshold
+            // keep this arithmetic signed: Color::CHANNEL_MAX is a size_t, and mixing it with a negative
+            // threshold_value_scaled would convert the product to unsigned and wrap around (B1)
+            constexpr int CHANNEL_MAX = static_cast<int>(Color::CHANNEL_MAX);
             const Color threshold_color_offset = Color(
-                threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX,
-                threshold_value_scaled * palette_pitch_vector.g / Color::CHANNEL_MAX,
-                threshold_value_scaled * palette_pitch_vector.b / Color::CHANNEL_MAX,
-                Color::CHANNEL_MAX);
+                threshold_value_scaled * palette_pitch_vector.r / CHANNEL_MAX,
+                threshold_value_scaled * palette_pitch_vector.g / CHANNEL_MAX,
+                threshold_value_scaled * palette_pitch_vector.b / CHANNEL_MAX,
+                CHANNEL_MAX);
 
             const Color palette_nearest = palette.nearest(color.add(threshold_color_offset), name_mapping_method, color_range_image, color_range_palette, slope);
             
@@ -404,8 +389,8 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
                 {
                     palette_color_darker = palette.get_color_at(index_darker);
                     palette_color_lighter = palette.get_color_at(index_lighter);
-                    double distance_darker;
-                    double distance_lighter;
+                    double distance_darker = 0.0;
+                    double distance_lighter = 0.0;
 
                     if(name_mapping_method == "EUCLIDEAN_DISTANCE")
                     {
@@ -417,9 +402,15 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
                         distance_darker = color.distance_manhattan(palette_color_darker);
                         distance_lighter = color.distance_manhattan(palette_color_lighter);
                     }
+                    else
+                    {
+                        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
+                        std::exit(EXIT_FAILURE);
+                    }
                     
                     // larger dark distance -> larger light time duty cycle
-                    duty_cycle = distance_darker / (distance_darker + distance_lighter);
+                    const double distance_total = distance_darker + distance_lighter;
+                    duty_cycle = distance_total > 0.0 ? distance_darker / distance_total : 0.0;
                 }
 
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
@@ -454,15 +445,41 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
                     color.to_linear(image.get_gamma());
                 }
 
+                bool exact_match = false;
+
                 for(std::size_t index_palette = 0; index_palette < palette_size; index_palette++)
                 {
+                    double distance;
+
                     if(name_mapping_method == "EUCLIDEAN_DISTANCE")
                     {
-                        weights.push_back(1.0 / color.distance_euclidean(palette.get_color_at(index_palette)));
+                        distance = color.distance_euclidean(palette.get_color_at(index_palette));
                     }
                     else if(name_mapping_method == "MANHATTAN_DISTANCE")
                     {
-                        weights.push_back(1.0 / color.distance_manhattan(palette.get_color_at(index_palette)));
+                        distance = color.distance_manhattan(palette.get_color_at(index_palette));
+                    }
+                    else
+                    {
+                        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
+                        std::exit(EXIT_FAILURE);
+                    }
+
+                    // weights are 1 / distance, so a pixel that equals a palette colour would get an infinite weight;
+                    // give that colour 100% probability instead
+                    if(distance <= 0.0)
+                    {
+                        if(!exact_match)
+                        {
+                            std::fill(weights.begin(), weights.end(), 0.0);
+                            exact_match = true;
+                        }
+
+                        weights.push_back(1.0);
+                    }
+                    else
+                    {
+                        weights.push_back(exact_match ? 0.0 : 1.0 / distance);
                     }
                 }
 

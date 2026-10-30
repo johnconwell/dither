@@ -17,6 +17,7 @@ CLI::CLI()
     temporal = false;
     temporal_method = "";
     temporal_frames = "";
+    temporal_frame_count = 0;
     mapping_method = "";
     palette = "";
     benchmark = false;
@@ -37,8 +38,8 @@ bool CLI::parse(int argc, const char* argv[])
             ("h,help", "Displays help")
             ("i,input", "Specifies the input png image file path", cxxopts::value<std::string>(), "<FILE_PATH>")
             ("o,output", "Specifies the file path the output png will be saved to", cxxopts::value<std::string>(), "<FILE_PATH>")
-            ("a,gamma_correction", "Applies gamma correction the the input image")
-            ("g,grayscale", "Applies gamma correction the the input image", cxxopts::value<std::string>(), "<GRAYSCALE_WEIGHTS>")
+            ("a,gamma_correction", "Processes the image in linear light (gamma correction)")
+            ("g,grayscale", "Converts the image to grayscale using the specified channel weights", cxxopts::value<std::string>(), "<GRAYSCALE_WEIGHTS>")
             ("c,convolve", "Convolves the input image using the specified kernel", cxxopts::value<std::string>(), "<KERNEL>")
             ("r,reduce", "Reduces the image to the specified palette without applying dithering", cxxopts::value<std::vector<std::string>>(), "<MAPPING_METHOD>,<PALETTE>")
             ("e,error_diffusion", "Dithers the image using the specified error diffusion algorithm and color mapping method", cxxopts::value<std::vector<std::string>>(), "<ERROR_DIFFUSION_ALGORITHM>,<SCAN_PATTERN>,<MAPPING_METHOD>,<PALETTE>")
@@ -99,7 +100,6 @@ bool CLI::parse(int argc, const char* argv[])
             if(num_args != 2)
             {
                 std::cerr << "Error: Incorrect number of arguments for --reduce flag. Expected 2, received " << num_args << "." << std::endl;
-                std::cerr << result["reduce"].as<std::vector<std::string>>()[0] << " " << result["reduce"].as<std::vector<std::string>>()[1] << std::endl;
                 return false;
             }
 
@@ -169,6 +169,93 @@ bool CLI::parse(int argc, const char* argv[])
         return false;
     }
 
+    return validate();
+}
+
+namespace
+{
+    bool is_one_of(const std::string& value, std::initializer_list<const char*> allowed)
+    {
+        return std::any_of(allowed.begin(), allowed.end(), [&](const char* a) { return value == a; });
+    }
+
+    std::string join(std::initializer_list<const char*> allowed)
+    {
+        std::string output;
+
+        for(const char* a : allowed)
+        {
+            output += (output.empty() ? "" : ", ") + std::string(a);
+        }
+
+        return output;
+    }
+
+    bool check_one_of(const std::string& what, const std::string& value, std::initializer_list<const char*> allowed)
+    {
+        if(is_one_of(value, allowed))
+        {
+            return true;
+        }
+
+        std::cerr << "Error: Invalid " << what << " - " << value << " (expected one of: " << join(allowed) << ")" << std::endl;
+        return false;
+    }
+}
+
+// checks the enum-like arguments and the frame count up front, so that bad input
+// is rejected with a clear message before any work is done (REVIEW B6)
+bool CLI::validate()
+{
+    const std::initializer_list<const char*> MAPPING_METHODS = {"EUCLIDEAN_DISTANCE", "MANHATTAN_DISTANCE", "UNIFORM_HISTOGRAM"};
+    const std::initializer_list<const char*> TEMPORAL_MAPPING_METHODS = {"EUCLIDEAN_DISTANCE", "MANHATTAN_DISTANCE"};
+
+    // output format comes from the extension (case-insensitive); .gif works for every operation
+    std::string extension = std::filesystem::path(file_path_output).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if(extension != ".png" && extension != ".gif")
+    {
+        std::cerr << "Error: Unsupported output file format - " << file_path_output << " (expected .png or .gif)" << std::endl;
+        return false;
+    }
+
+    if(error_diffusion && !check_one_of("scan pattern", error_diffusion_scan_pattern, {"RASTER", "SERPENTINE"}))
+    {
+        return false;
+    }
+
+    if(temporal)
+    {
+        if(!check_one_of("temporal dithering method", temporal_method, {"PWM", "RANDOM"}))
+        {
+            return false;
+        }
+
+        // UNIFORM_HISTOGRAM is documented as not valid with -t
+        if(!check_one_of("mapping method for --temporal", mapping_method, TEMPORAL_MAPPING_METHODS))
+        {
+            return false;
+        }
+
+        const char* first = temporal_frames.data();
+        const char* last = first + temporal_frames.size();
+        std::size_t frames = 0;
+        const auto [ptr, ec] = std::from_chars(first, last, frames);
+
+        if(temporal_frames.empty() || ec != std::errc() || ptr != last || frames < 1 || frames > TEMPORAL_FRAMES_MAX)
+        {
+            std::cerr << "Error: Invalid number of temporal frames - " << temporal_frames << " (expected a whole number from 1 to " << TEMPORAL_FRAMES_MAX << ")" << std::endl;
+            return false;
+        }
+
+        temporal_frame_count = frames;
+    }
+    else if((reduce || error_diffusion || ordered) && !check_one_of("mapping method", mapping_method, MAPPING_METHODS))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -196,6 +283,7 @@ std::string CLI::to_string()
     output += "ordered: ";
     output += ordered ? "true\n" : "false\n";
     output += "ordered_threshold_matrix: " + ordered_threshold_matrix + "\n";
+    output += "temporal: ";
     output += temporal ? "true\n" : "false\n";
     output += "temporal_method: " + temporal_method + "\n";
     output += "temporal_frames: " + temporal_frames + "\n";

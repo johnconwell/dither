@@ -23,11 +23,25 @@ Palette::Palette(std::string name)
         std::string token;
 
         std::getline(file, line);
+
+        // tolerate Windows line endings
+        if(!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+
         std::stringstream ss(line);
         
         while(std::getline(ss, token, ','))
         {
             tokens.push_back(token);
+        }
+
+        // Lospec format: name,author,color,color,...
+        if(tokens.size() < 3)
+        {
+            std::cerr << "Error: Palette file has no colors (expected name,author,color,...) - " << name << std::endl;
+            std::exit(EXIT_FAILURE);
         }
 
         this->name = tokens[0];
@@ -73,7 +87,7 @@ void Palette::sort()
 {
     const std::size_t colors_size = colors.size();
 
-    for(std::size_t index_primary = 0; index_primary < colors_size - 1; index_primary++)
+    for(std::size_t index_primary = 0; index_primary + 1 < colors_size; index_primary++)
     {
         for(std::size_t index_secondary = index_primary + 1; index_secondary < colors_size; index_secondary++)
         {
@@ -124,9 +138,14 @@ Color Palette::nearest(Color input, std::string mapping_method, std::vector<Colo
     else if(mapping_method == "UNIFORM_HISTOGRAM")
     {
         const std::size_t INDEX_COLOR_MIN = 0;
-        const int color_mapped_r = output_range[INDEX_COLOR_MIN].r + (slope[Color::INDEX_R] * (input.r - input_range[INDEX_COLOR_MIN].r));
-        const int color_mapped_g = output_range[INDEX_COLOR_MIN].g + (slope[Color::INDEX_R] * (input.g - input_range[INDEX_COLOR_MIN].g));
-        const int color_mapped_b = output_range[INDEX_COLOR_MIN].b + (slope[Color::INDEX_R] * (input.b - input_range[INDEX_COLOR_MIN].b));
+        // a channel with no range in the image (slope = UNMAPPED) passes straight through to the nearest-colour search
+        auto map_channel = [&](int value, std::size_t index_channel, int input_min, int output_min) {
+            const double channel_slope = slope[index_channel];
+            return std::isnan(channel_slope) ? value : static_cast<int>(output_min + channel_slope * (value - input_min));
+        };
+        const int color_mapped_r = map_channel(input.r, Color::INDEX_R, input_range[INDEX_COLOR_MIN].r, output_range[INDEX_COLOR_MIN].r);
+        const int color_mapped_g = map_channel(input.g, Color::INDEX_G, input_range[INDEX_COLOR_MIN].g, output_range[INDEX_COLOR_MIN].g);
+        const int color_mapped_b = map_channel(input.b, Color::INDEX_B, input_range[INDEX_COLOR_MIN].b, output_range[INDEX_COLOR_MIN].b);
         Color color_mapped = Color(color_mapped_r, color_mapped_g, color_mapped_b, Color::CHANNEL_MAX);
 
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
@@ -202,6 +221,12 @@ Color Palette::pitch_vector()
     const std::size_t colors_size = colors.size();
     Color distance_vector = Color(0, 0, 0, Color::CHANNEL_MAX);
 
+    // a single colour has no spread, and dividing by colors_size - 1 would divide by zero
+    if(colors_size < 2)
+    {
+        return distance_vector;
+    }
+
     for(std::size_t index_colors = 0; index_colors < colors_size - 1; index_colors++)
     {
         distance_vector.r += std::abs(colors[index_colors].r - colors[index_colors + 1].r);
@@ -223,39 +248,12 @@ std::vector<Color> Palette::get_color_range()
         Color(0, 0, 0, Color::CHANNEL_MAX)
     };
     const std::size_t palette_size = colors.size();
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
 
     for(std::size_t index_palette = 0; index_palette < palette_size; index_palette++)
     {
         const Color color = colors[index_palette];
 
-        if(color.r < color_range[INDEX_COLOR_MIN].r)
-        {
-            color_range[INDEX_COLOR_MIN].r = color.r;
-        }
-        else if(color.r > color_range[INDEX_COLOR_MAX].r)
-        {
-            color_range[INDEX_COLOR_MAX].r = color.r;
-        }
-
-        if(color.g < color_range[INDEX_COLOR_MIN].g)
-        {
-            color_range[INDEX_COLOR_MIN].g = color.g;
-        }
-        else if(color.g > color_range[INDEX_COLOR_MAX].g)
-        {
-            color_range[INDEX_COLOR_MAX].g = color.g;
-        }
-
-        if(color.b < color_range[INDEX_COLOR_MIN].b)
-        {
-            color_range[INDEX_COLOR_MIN].b = color.b;
-        }
-        else if(color.b > color_range[INDEX_COLOR_MAX].b)
-        {
-            color_range[INDEX_COLOR_MAX].b = color.b;
-        }
+        color.expand_range(color_range);
     }
 
     return color_range;
@@ -272,4 +270,26 @@ std::string Palette::to_string()
     }
 
     return output;
+}
+
+std::vector<double> Palette::range_slope(const std::vector<Color>& image_range, const std::vector<Color>& palette_range)
+{
+    const std::size_t INDEX_COLOR_MIN = 0;
+    const std::size_t INDEX_COLOR_MAX = 1;
+
+    auto channel_slope = [](int image_min, int image_max, int palette_min, int palette_max) {
+        // flat channel: nothing to stretch, and dividing would be a divide by zero (B4)
+        if(image_max <= image_min)
+        {
+            return UNMAPPED;
+        }
+
+        return static_cast<double>(palette_max - palette_min) / static_cast<double>(image_max - image_min);
+    };
+
+    return {
+        channel_slope(image_range[INDEX_COLOR_MIN].r, image_range[INDEX_COLOR_MAX].r, palette_range[INDEX_COLOR_MIN].r, palette_range[INDEX_COLOR_MAX].r),
+        channel_slope(image_range[INDEX_COLOR_MIN].g, image_range[INDEX_COLOR_MAX].g, palette_range[INDEX_COLOR_MIN].g, palette_range[INDEX_COLOR_MAX].g),
+        channel_slope(image_range[INDEX_COLOR_MIN].b, image_range[INDEX_COLOR_MAX].b, palette_range[INDEX_COLOR_MIN].b, palette_range[INDEX_COLOR_MAX].b),
+    };
 }

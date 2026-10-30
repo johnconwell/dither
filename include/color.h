@@ -46,6 +46,9 @@ public:
     std::string to_string();
     std::string to_string_hex();
 
+    // widen a {min, max} colour range so that it includes this colour (each channel independently)
+    void expand_range(std::vector<Color>& range) const;
+
     int r;
     int g;
     int b;

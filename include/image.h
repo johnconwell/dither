@@ -4,7 +4,10 @@
 #include "color.h"
 #include "gif.h"
 #include "lodepng.h"
-#include <algorithm> // std::clamp
+#include <algorithm> // std::clamp, std::transform
+#include <cctype> // std::tolower
+#include <filesystem> // std::filesystem::path
+#include <string> // std::string
 #include <iostream> // std::err, std::endl
 #include <vector> // std::vector
 
