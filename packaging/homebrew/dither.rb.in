@@ -1,0 +1,43 @@
+# Homebrew formula for the prebuilt release binaries.
+# scripts/render_packaging.sh fills in the version, repository and checksums.
+class Dither < Formula
+  desc "Dithering, palette reduction and temporal dithering for PNG images"
+  homepage "https://github.com/@REPOSITORY@"
+  version "@VERSION@"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/dither-@VERSION@-macos-arm64.tar.gz"
+      sha256 "@SHA256_MACOS_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/dither-@VERSION@-macos-x86_64.tar.gz"
+      sha256 "@SHA256_MACOS_X86_64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/dither-@VERSION@-linux-arm64.tar.gz"
+      sha256 "@SHA256_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/dither-@VERSION@-linux-x86_64.tar.gz"
+      sha256 "@SHA256_LINUX_X86_64@"
+    end
+  end
+
+  def install
+    bin.install "dither"
+    pkgshare.install "data"
+    doc.install "README.md"
+  end
+
+  test do
+    assert_match "Usage", shell_output("#{bin}/dither --help")
+    system bin/"dither", "-i", test_fixtures("test.png"), "-o", testpath/"out.png",
+           "-d", "BAYER_4X4,EUCLIDEAN_DISTANCE,1BIT_MONITOR_GLOW"
+    assert_path_exists testpath/"out.png"
+  end
+end

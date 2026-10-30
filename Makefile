@@ -8,6 +8,8 @@ CC = g++
 # -Wsign-conversion catches signed/unsigned mix-ups in arithmetic
 WARNINGS = -Wall -Wextra -Wconversion -Wsign-conversion
 CFLAGS = -I$(IDIR) -std=c++23 -O2 $(WARNINGS) -MMD -MP
+# extra linker flags, e.g. `make LDFLAGS=-static` for a binary with no runtime library dependencies
+LDFLAGS =
 
 # on Windows (MinGW) the linker appends .exe, so the target name must include it
 ifeq ($(OS),Windows_NT)
@@ -35,7 +37,7 @@ all : $(TARGET)
 dither : $(TARGET)
 
 $(TARGET) : $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 # vendored third-party code (lodepng, gif-h): don't report its warnings
 $(ODIR)/lodepng.o $(ODIR)/gif.o : WARNINGS = -w
@@ -48,7 +50,7 @@ $(ODIR)/test_main.o : $(TDIR)/test_main.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 $(TEST_TARGET) : $(LIB_OBJ) $(TEST_OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 # the CLI tests run the real binary, so build both
 test : $(TARGET) $(TEST_TARGET)

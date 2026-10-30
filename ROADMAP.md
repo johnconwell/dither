@@ -42,6 +42,8 @@ Phases are ordered by **impact ÷ effort**. Low-effort items that remove a reaso
 
 These involve almost no algorithm work, but they decide whether anyone tries Dither at all. The comparison found that packaging probably matters more than any new algorithm.
 
+**Status (October 30, 2026):** #1–#3 implemented, waiting on the first tagged release. Added: README highlights, install and quick-start sections; `.github/workflows/build.yml` (5 platforms: Linux x86-64/arm64, macOS arm64/Intel, Windows x86-64), `scripts/package.sh`, `scripts/check_deps.sh`, `scripts/render_packaging.sh`, and Homebrew/Scoop templates in `packaging/`. Still to do: create the `homebrew-tap` and `scoop-bucket` repositories, add the `PACKAGING_TOKEN` secret, and push the first `v*` tag. The `.deb` is deferred.
+
 ### 1. README repositioning — High / S
 - Lead with **temporal dithering** (GIF and sprite-sheet output) and **histogram mapping onto the palette**, with one before/after image for each.
 - Rewrite "Why use Dither instead of ImageMagick?": drop or soften the convolution and channel-weights points (ImageMagick has `-morphology Convolve` and `-color-matrix`). Keep temporal, blue noise, histogram mapping and error-diffusion kernels.

@@ -1,0 +1,191 @@
+# Builds and tests Dither on Linux, macOS and Windows on every push and pull request.
+# Pushing a tag such as v2.1.0 also publishes the binaries as a GitHub release, together with
+# SHA256SUMS, a Homebrew formula (dither.rb) and a Scoop manifest (dither.json).
+# If the PACKAGING_TOKEN secret is set, the formula and manifest are also pushed to the
+# repositories named in HOMEBREW_TAP and SCOOP_BUCKET below.
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_TAP: johnconwell/homebrew-tap
+  SCOOP_BUCKET: johnconwell/scoop-bucket
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+            ldflags: -static
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            ldflags: -static
+          - platform: macos-arm64
+            runner: macos-15
+            ldflags: -static-libgcc -static-libstdc++
+          - platform: macos-x86_64
+            runner: macos-15-intel
+            ldflags: -static-libgcc -static-libstdc++
+          - platform: windows-x86_64
+            runner: windows-latest
+            ldflags: -static
+    defaults:
+      run:
+        shell: ${{ startsWith(matrix.platform, 'windows') && 'msys2 {0}' || 'bash' }}
+    env:
+      # oldest macOS the binaries are built to run on
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (Windows)
+        if: startsWith(matrix.platform, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            make
+            zip
+
+      # builds with Homebrew GCC, since Apple clang's libc++ may lack floating-point std::from_chars
+      - name: Select GCC (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          brew list gcc >/dev/null 2>&1 || brew install gcc
+          cxx=$(ls "$(brew --prefix)"/bin/g++-[0-9]* | sort -V | tail -n 1)
+          echo "DITHER_CC=$cxx" >> "$GITHUB_ENV"
+
+      - name: Compiler version
+        run: ${DITHER_CC:-g++} --version
+
+      - name: Build and test
+        run: make -j4 CC="${DITHER_CC:-g++}" LDFLAGS="${{ matrix.ldflags }}" test
+
+      - name: Check runtime dependencies
+        run: bash scripts/check_deps.sh ${{ matrix.platform }}
+
+      - name: Smoke test
+        run: |
+          mkdir -p tests/tmp
+          ./bin/dither --help > /dev/null
+          ./bin/dither -i input/tulips.png -o tests/tmp/smoke.gif -t PWM,4,EUCLIDEAN_DISTANCE,SLSO8 -a -b
+
+      - name: Package
+        run: |
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version=dev-${GITHUB_SHA::7}
+          fi
+          bash scripts/package.sh "$version" ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dither-${{ matrix.platform }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums, Homebrew formula and Scoop manifest
+        run: bash scripts/render_packaging.sh "${GITHUB_REF_NAME#v}" dist
+
+      # the release notes are the README changelog section for this version, if there is one
+      - name: Release notes
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          awk -v heading="### ${version}" '
+            $0 == heading { found = 1; next }
+            found && /^##/ { exit }
+            found { print }
+          ' README.md > notes.md
+          if [[ ! -s notes.md ]]; then
+            echo "See the changelog in README.md." > notes.md
+          fi
+          cat notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [[ $GITHUB_REF_NAME == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.tar.gz dist/*.zip dist/SHA256SUMS dist/dither.rb dist/dither.json \
+            --title "Dither ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md \
+            --verify-tag \
+            "${flags[@]}"
+
+  publish-packages:
+    # prereleases (tags containing '-') are not published to the package repositories
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      PACKAGING_TOKEN: ${{ secrets.PACKAGING_TOKEN }}
+    steps:
+      - name: Skip without a token
+        if: env.PACKAGING_TOKEN == ''
+        run: echo "::notice::PACKAGING_TOKEN is not set, so dither.rb and dither.json were only attached to the release"
+
+      - name: Download formula and manifest
+        if: env.PACKAGING_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern dither.rb --pattern dither.json
+
+      - name: Push to package repositories
+        if: env.PACKAGING_TOKEN != ''
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          publish() {
+            local repository=$1 source=$2 destination=$3
+            git clone --depth 1 "https://x-access-token:${PACKAGING_TOKEN}@github.com/${repository}.git" target
+            mkdir -p "target/$(dirname "$destination")"
+            cp "$source" "target/$destination"
+            git -C target add "$destination"
+            if git -C target diff --cached --quiet; then
+              echo "$repository is already up to date"
+            else
+              git -C target commit -m "dither ${GITHUB_REF_NAME#v}"
+              git -C target push
+            fi
+            rm -rf target
+          }
+
+          publish "$HOMEBREW_TAP" dither.rb Formula/dither.rb
+          publish "$SCOOP_BUCKET" dither.json bucket/dither.json

@@ -2,6 +2,51 @@
 
 A command line interface application that provides several image processing functions that can be applied to PNG images.
 
+## Highlights
+
+### Temporal Dithering for GIFs and Sprite Sheets
+`-t` spreads each pixel across several frames of a gif, or of a vertical png sprite sheet, so that the frames average to colors the palette doesn't contain. The `PWM` method is deterministic, and each pixel starts at a different frame taken from a blue noise matrix, so every frame has about the same overall brightness. Below, the same two-color palette is used without and with temporal dithering:
+| Input | `-r`, 2 colors | `-t PWM,8`, 2 colors over 8 frames |
+| :-- | :-- | :-- |
+| <img src="input/tulips.png" width="256"> | <img src="docs/images/tulips_reduce_1bit_monitor_glow.png" width="256"> | <img src="docs/images/tulips_temporal_pwm_1bit_monitor_glow.gif" width="256"> |
+
+`dither -i input/tulips.png -o output/tulips_temporal_pwm_1bit_monitor_glow.gif -t PWM,8,EUCLIDEAN_DISTANCE,1BIT_MONITOR_GLOW -a`</br>
+See [Temporal Dithering](#temporal-dithering).
+
+### Histogram Mapping onto the Palette
+The `UNIFORM_HISTOGRAM` mapping method maps each pixel by its brightness rank in the image rather than by its color distance, so each palette color covers roughly the same share of the image. This recovers detail that nearest-color mapping loses when the palette doesn't match the tones of the image:
+| Input | `EUCLIDEAN_DISTANCE` | `UNIFORM_HISTOGRAM` |
+| :-- | :-- | :-- |
+| <img src="input/boat.png" width="256"> | <img src="docs/images/boat_reduce_mist_gb_euclidean.png" width="256"> | <img src="docs/images/boat_reduce_mist_gb_uniform_histogram.png" width="256"> |
+
+`dither -i input/boat.png -o output/boat_reduce_mist_gb_uniform_histogram.png -r UNIFORM_HISTOGRAM,MIST_GB`</br>
+See [Palette Mapping Methods](#palette-mapping-methods).
+
+## Install
+Prebuilt binaries for Windows (x86-64), macOS (Apple Silicon and Intel) and Linux (x86-64 and arm64) are attached to each [release](https://github.com/johnconwell/dither/releases). Each archive contains the `dither` executable, this README, the license and the example csv files in `data/`. Extract it and add the folder to your `PATH`.
+
+With [Homebrew](https://brew.sh/) (macOS and Linux):
+```bash
+brew install johnconwell/tap/dither
+```
+
+With [Scoop](https://scoop.sh/) (Windows):
+```bash
+scoop bucket add johnconwell https://github.com/johnconwell/scoop-bucket
+scoop install dither
+```
+
+To build from source instead, see [To Compile](#to-compile).
+
+## Quick Start
+Run these from the root directory to use the sample images in `input/`, or point `-i` at any png image:
+```bash
+dither -i input/boat.png -o output/boat_ordered.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,TWILIGHT5
+dither -i input/tulips.png -o output/tulips_error_diffusion.png -e FLOYD_STEINBERG,SERPENTINE,EUCLIDEAN_DISTANCE,SLSO8 -a
+dither -i input/tulips.png -o output/tulips_temporal.gif -t PWM,8,EUCLIDEAN_DISTANCE,SLSO8 -a
+```
+The first dithers with a blue noise threshold matrix, the second with Floyd-Steinberg error diffusion in linear light, and the third makes an 8 frame temporally dithered gif.
+
 ## Usage
 Use the `dither` command followed by the input and output flags and any number of optional flags. See the example section for a detailed look at use cases.</br>
 Only one of `-r`, `-e`, `-d` and `-t` can be used per run. `-g` and `-c` can be combined with any of them. Operations always run in this order, whatever order the flags are given in: grayscale, convolve, then the reduce or dither operation.
@@ -202,16 +247,16 @@ where `COLORX` is a hexadecimal color code. This format exactly matches the Losp
 | SLSO8 | [lospec](https://lospec.com/palette-list/slso8) |
 
 ## Examples
-The below examples are executed from the root directory. `dither` can be used instead of `.\bin\dither.exe` if the executable is added to your path. Input and output directories are shown relative to the root directory, but absolute paths can be used as well.</br>
-`.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_grayscale_bt709.png -g BT709`</br>
-`.\bin\dither.exe -i .\input\boat.png -o .\output\boat_reduce_twilight5.png -r MANHATTAN_DISTANCE,TWILIGHT5`</br>
-`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_convolve_unsharp_mask.png -c UNSHARP_MASK`</br>
-`.\bin\dither.exe -i .\input\earth.png -o .\output\earth_error_diffusion_jarvis-judice-ninke_raster_twilight5.png -e JARVIS_JUDICE_NINKE,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5`</br>
-`.\bin\dither.exe -i .\input\lena.png -o .\output\lena_error_diffusion_atkinson_serpentine_midnight_ablaze.png -e ATKINSON,SERPENTINE,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
-`.\bin\dither.exe -i .\input\peppers.png -o .\output\peppers_ordered_blue_noise_64x64_cherrymelon.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,.\data\palettes\cherrymelon.csv`</br>
-`.\bin\dither.exe -i .\input\baboon.png -o .\output\baboon_ordered_bayer_16x16_witching-hour.png -d BAYER_16X16,EUCLIDEAN_DISTANCE,.\data\palettes\witching-hour.csv -a`</br>
-`.\bin\dither.exe -i .\input\tulips.png -o .\output\tulips_temporal_pwm_slso8.gif -t PWM,8,EUCLIDEAN_DISTANCE,SLSO8 -a`</br>
-`.\bin\dither.exe -i .\input\tulips.png -o .\output\tulips_temporal_pwm_noire_truth.png -t PWM,4,EUCLIDEAN_DISTANCE,NOIRE_TRUTH -a`</br>
+The below examples are executed from the root directory and assume `dither` is on your path. Otherwise, use `./bin/dither` (or `.\bin\dither.exe` in the Windows Command Prompt). Forward slashes work in file paths on every platform. Input and output directories are shown relative to the root directory, but absolute paths can be used as well.</br>
+`dither -i input/baboon.png -o output/baboon_grayscale_bt709.png -g BT709`</br>
+`dither -i input/boat.png -o output/boat_reduce_twilight5.png -r MANHATTAN_DISTANCE,TWILIGHT5`</br>
+`dither -i input/lena.png -o output/lena_convolve_unsharp_mask.png -c UNSHARP_MASK`</br>
+`dither -i input/earth.png -o output/earth_error_diffusion_jarvis-judice-ninke_raster_twilight5.png -e JARVIS_JUDICE_NINKE,RASTER,EUCLIDEAN_DISTANCE,TWILIGHT5`</br>
+`dither -i input/lena.png -o output/lena_error_diffusion_atkinson_serpentine_midnight_ablaze.png -e ATKINSON,SERPENTINE,EUCLIDEAN_DISTANCE,MIDNIGHT_ABLAZE -a`</br>
+`dither -i input/peppers.png -o output/peppers_ordered_blue_noise_64x64_cherrymelon.png -d BLUE_NOISE_64X64,EUCLIDEAN_DISTANCE,data/palettes/cherrymelon.csv`</br>
+`dither -i input/baboon.png -o output/baboon_ordered_bayer_16x16_witching-hour.png -d BAYER_16X16,EUCLIDEAN_DISTANCE,data/palettes/witching-hour.csv -a`</br>
+`dither -i input/tulips.png -o output/tulips_temporal_pwm_slso8.gif -t PWM,8,EUCLIDEAN_DISTANCE,SLSO8 -a`</br>
+`dither -i input/tulips.png -o output/tulips_temporal_pwm_noire_truth.png -t PWM,4,EUCLIDEAN_DISTANCE,NOIRE_TRUTH -a`</br>
 
 ## To Compile
 Requirements: GNU C++ compiler (GCC 13 or newer), make<br/>
@@ -219,6 +264,8 @@ Open a terminal in the root directory and enter the command
 ```bash
 > make
 ```
+On macOS, install GCC with Homebrew (`brew install gcc`) and pass it to make, for example `make CC=g++-15` (use the version number Homebrew installed), since Apple clang's standard library may not support everything Dither uses.<br/>
+Extra linker flags can be passed with `LDFLAGS`. For example, `make LDFLAGS=-static` builds an executable that doesn't need the compiler's runtime libraries, which is how the release binaries are built on Windows and Linux (macOS uses `-static-libgcc -static-libstdc++`).
 
 ## Testing
 Open a terminal in the root directory and enter the command
@@ -228,18 +275,27 @@ Open a terminal in the root directory and enter the command
 This builds `dither` and the test runner, then runs every test and reports the number of passes and failures. Tests generate their images at run time in `tests/tmp/`, which `make clean` removes.</br>
 Tests are defined in [tests/test_main.cpp](tests/test_main.cpp). A test marked `TEST` must pass. A test marked `XFAIL` is a known bug that is expected to fail; if it starts passing, the runner reports `XPASS` and the run fails until `XFAIL` is changed to `TEST`.</br>
 The test runner can also be run directly. Add `-v` to show the details of expected failures, or the names of tests to run only those tests:</br>
-`.\bin\test_dither.exe .\bin\dither.exe -v`</br>
-`.\bin\test_dither.exe .\bin\dither.exe convolve_identity ed_kernel_sums`
+`./bin/test_dither ./bin/dither -v`</br>
+`./bin/test_dither ./bin/dither convolve_identity ed_kernel_sums`
+
+## Releases
+[.github/workflows/build.yml](.github/workflows/build.yml) builds and tests Dither on Windows, macOS and Linux for every push and pull request. Pushing a tag named after the version, for example `v2.1.0`, also creates a GitHub release containing:
+- an archive for each platform, made by [scripts/package.sh](scripts/package.sh)
+- `SHA256SUMS`
+- `dither.rb`, a Homebrew formula, and `dither.json`, a Scoop manifest, filled in from the templates in [packaging](packaging) by [scripts/render_packaging.sh](scripts/render_packaging.sh)
+
+The release notes are taken from this README's changelog section for that version. Tags containing a `-`, such as `v2.1.0-rc1`, are marked as prereleases.</br>
+If the repository has a `PACKAGING_TOKEN` secret (a token that can push to [johnconwell/homebrew-tap](https://github.com/johnconwell/homebrew-tap) and [johnconwell/scoop-bucket](https://github.com/johnconwell/scoop-bucket)), the formula and manifest are also committed to `Formula/dither.rb` and `bucket/dither.json` in those repositories for every release that is not a prerelease. Without the secret, copy them there by hand.
 
 ## Why Use Dither Instead of ImageMagick?
 [ImageMagick](https://imagemagick.org/) is a mature and powerful tool with far more features than Dither. Most of the time, you probably should use ImageMagick. However, Dither has a few features that ImageMagick does not:
-- More built-in grayscale channel weightings, and the ability to specify arbitrary channel weightings through a custom csv file
-- Several built-in palettes, plus the ability to specify a palette through a csv file (obtained directly from Lospec) rather than another image
-- Built-in convolution kernels, plus the ability to specify an arbitrarily sized convolution kernel as a csv
-- Nine built-in error diffusion algorithms (ImageMagick has two built-in algorithms)
-- Built-in blue noise threshold matrixes for ordered dithering, plus the ability to specify a threshold matrix as a csv
 - Temporal dithering, which spreads each pixel across several frames of a gif or a vertical png sprite sheet
 - A histogram equalisation mapping method that uses approximately equal amounts of each palette color
+- Built-in blue noise threshold matrixes for ordered dithering, plus the ability to specify a threshold matrix as a csv
+- Nine built-in error diffusion algorithms (ImageMagick has two built-in algorithms)
+- Several built-in palettes, plus the ability to specify a palette through a csv file (obtained directly from Lospec) rather than another image
+
+ImageMagick can also convert to grayscale with arbitrary channel weights (`-color-matrix`) and convolve with custom kernels (`-morphology Convolve`). Dither's built-in presets and csv files for these are a convenience rather than a missing feature.
 
 
 ## Libraries
@@ -248,6 +304,11 @@ The test runner can also be run directly. Add `-v` to show the details of expect
 [gif-h](https://github.com/charlietangora/gif-h) - provides gif writing functions
 
 ## Changelog
+
+### Unreleased
+- Prebuilt binaries for Windows, macOS and Linux are attached to each GitHub release, along with a Homebrew formula and a Scoop manifest. See [Install](#install) and [Releases](#releases).
+- `make` accepts extra linker flags through `LDFLAGS`, for example `make LDFLAGS=-static`.
+- README: added highlights, install and quick start sections, made the examples platform-neutral, and clarified which features ImageMagick also has.
 
 ### 2.0.0
 Breaking changes:

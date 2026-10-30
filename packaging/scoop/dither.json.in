@@ -1,0 +1,27 @@
+{
+    "version": "@VERSION@",
+    "description": "Dithering, palette reduction and temporal dithering for PNG images",
+    "homepage": "https://github.com/@REPOSITORY@",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/dither-@VERSION@-windows-x86_64.zip",
+            "hash": "@SHA256_WINDOWS_X86_64@",
+            "extract_dir": "dither-@VERSION@-windows-x86_64"
+        }
+    },
+    "bin": "dither.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/@REPOSITORY@/releases/download/v$version/dither-$version-windows-x86_64.zip",
+                "extract_dir": "dither-$version-windows-x86_64"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS",
+            "regex": "$sha256\\s+\\*?$basename"
+        }
+    }
+}

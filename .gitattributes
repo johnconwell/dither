@@ -1,0 +1,4 @@
+# shell scripts, workflow files and packaging templates keep LF line endings on every platform
+*.sh text eol=lf
+*.yml text eol=lf
+*.in text eol=lf
