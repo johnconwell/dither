@@ -246,3 +246,41 @@ The test runner can also be run directly. Add `-v` to show the details of expect
 [Noise2D](https://github.com/johnconwell/noise2d) - used to generate threshold matrixes for ordered dithering</br>
 [LodePNG](https://lodev.org/lodepng/) - provides png encoding/decoding functions</br>
 [gif-h](https://github.com/charlietangora/gif-h) - provides gif writing functions
+
+## Changelog
+
+### 2.0.0
+Breaking changes:
+- Only one of `-r`, `-e`, `-d` and `-t` can be used per run; combining them is now an error. `-g` and `-c` can still be combined with any of them.
+- `UNIFORM_HISTOGRAM` now performs histogram equalisation, so each palette color covers roughly the same share of the image. Output differs from earlier versions.
+- `PWM` temporal dithering is now deterministic: each pixel shows the lighter color in a fixed number of frames, which reduces flicker and gives the same output on every run. The previous random behavior is available as `STOCHASTIC_PWM`.
+- `-a` now also applies to `-c`, so convolution can run in linear light.
+
+Other changes:
+- Added the correct spelling `JARVIS_JUDICE_NINKE`. `JARVICE_JUDICE_NINKE` is still accepted.
+- README: corrected the `-e` and `-t` syntax and the `--error_diffusion` spelling, and added sections on gamma correction, benchmark output, testing, CSV formats and the minimum GCC version.
+
+### 1.2.0
+- Faster startup and a smaller executable.
+- Invalid options are reported before the input image is loaded. Every error is printed as `Error: <message>` and exits with code 1. CSV errors name the file and line.
+- CSV files may contain blank lines and Windows line endings. Values that are not valid numbers are rejected, threshold matrix values must be whole numbers from 0 to 255, and grayscale weights must be a single row of three values.
+- `-b` now reports the time taken to load, run each operation, save, and in total. It is printed only after the output has been saved successfully.
+
+### 1.1.0
+- Convolution no longer shifts the image or leaves black borders; edge pixels are extended instead. Results are rounded rather than truncated.
+- Convolution kernels are now flipped (true convolution), so asymmetric custom kernels such as `emboss.csv` give mirrored results compared with 1.0.x.
+- `-a` now gives correct results. Dithered output is no longer far too dark, the standard sRGB curve is used, and grayscale conversion keeps every gray level.
+- Error diffusion keeps small errors instead of discarding them, reducing banding with palettes of similar colors.
+- Ordered dithering no longer darkens the image, most noticeably with `BAYER_2X2` and the small white noise matrixes.
+- Transparency is kept. Fully transparent pixels are left unchanged and don't affect their neighbors.
+- Error diffusion is about three times faster.
+
+### 1.0.1
+- Fixed ordered dithering forcing about half of all pixels to the darkest palette color.
+- Fixed `WHITE_NOISE_64X64` not being recognized.
+- Fixed `UNIFORM_HISTOGRAM` scaling all channels by the red channel, failing on some images, and mapping single-color images to the darkest palette color.
+- Invalid input now gives a clear error and a non-zero exit code instead of crashing or silently writing nothing. This covers invalid frame counts (must be 1 to 256), unknown scan patterns, temporal methods and mapping methods, `UNIFORM_HISTOGRAM` with `-t`, empty palette files, threshold values outside 0 to 255, unsupported output file types and failed gif writes.
+- The output format is decided by the file extension (`.png` or `.gif`, case-insensitive).
+- `RANDOM` temporal dithering handles pixels that exactly match a palette color.
+- Fixed typos in the `-a` and `-g` help text.
+- Builds with GCC 13 or newer. `make clean` no longer deletes the `output/` folder, and `make test` runs the new test suite.

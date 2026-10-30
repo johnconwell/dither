@@ -1,12 +1,12 @@
-// Dither regression tests (ROADMAP.md, Phase 0.2).
+// Dither tests.
 //
 // Build and run from the repository root with:  make test
 // Run by hand:                                  ./bin/test_dither ./bin/dither [-v] [test_name ...]
 //
 // The runner has no dependencies. Each test is a plain function that calls CHECK.
-// Tests that are known to fail today are registered with XFAIL and the finding ID
-// from REVIEW.md. When a fix lands, that test starts passing and the runner reports
-// it as XPASS (and fails the run) until you change XFAIL to TEST below.
+// A test for a known, unfixed bug can be registered with XFAIL and a short reason.
+// If it starts passing, the runner reports it as XPASS (and fails the run) until it
+// is changed from XFAIL to TEST.
 //
 // The library tests call the Dither / Palette / Ordered APIs directly; library errors
 // are DitherError exceptions. The CLI tests run the real dither binary as a child
@@ -117,7 +117,7 @@ namespace harness
     static void name()
 
 // TEST(name)            - must pass
-// XFAIL(name, "B1 ...") - known to fail today; flip to TEST once the fix lands
+// XFAIL(name, "reason") - known bug, expected to fail; change to TEST once fixed
 #define TEST(name) TEST_IMPL(name, false, "")
 #define XFAIL(name, reason) TEST_IMPL(name, true, reason)
 
@@ -348,8 +348,8 @@ namespace
 
 // Flat greys at 25%, 50% and 75% of the way from the dark to the light palette
 // colour, dithered with BAYER_8X8, should come out 25%, 50% and 75% light.
-// (50% alone can't catch B1: forcing every negative-offset cell to the darkest
-// colour happens to be the right answer exactly at the midpoint.)
+// (50% alone is not enough: a bug that forces every negative-offset cell to the
+// darkest colour still gives the right answer exactly at the midpoint.)
 TEST(ordered_grey_coverage)
 {
     const Color dark(0x222323), light(0xf0f6f0);
@@ -499,9 +499,9 @@ TEST(convolve_keeps_alpha_and_rounds)
     CHECK_MSG(wrong_value == 0, std::to_string(wrong_value) + " pixels were not rounded to nearest (0.97 * 10 should give 10)");
 }
 
-// 2 colours in linear light. REVIEW.md B3 computes the correct white fraction for
-// boat.png as 0.273 (the v1.0.0 code gave 0.193). Error diffusion and ordered
-// dithering should both land there.
+// boat.png dithered to 2 colours in linear light (-a). The correct white fraction,
+// computed independently, is 0.273. Error diffusion and ordered dithering should
+// both land there.
 TEST(gamma_linear_coverage)
 {
     const fs::path boat = fs::path("input") / "boat.png";
@@ -522,7 +522,7 @@ TEST(gamma_linear_coverage)
 }
 
 // The sRGB curve and a pure gAMA power curve both round-trip every 8-bit level,
-// are strictly increasing, and hit the standard reference values (ROADMAP 3.2).
+// are strictly increasing, and hit the standard reference values.
 TEST(transfer_round_trip)
 {
     for(const double gamma : {0.0, 2.2, 1.8})
@@ -576,7 +576,6 @@ TEST(png_gamma_chunks)
 
 // Grayscale with -a weights the channels in linear light and rounds once, so a
 // grey ramp is unchanged and a colour gradient keeps (nearly) every grey level.
-// (v1.0.0 kept 163 of them.)
 TEST(grayscale_linear_levels)
 {
     Dither ramp = load(write_png("grey_ramp.png", 256, 1, [](unsigned x, unsigned) {
@@ -612,10 +611,9 @@ TEST(grayscale_linear_levels)
 }
 
 // Every built-in threshold matrix, not only BAYER_8X8, must reproduce flat greys at
-// the right coverage once thresholds are centred (Q3). In v1.0.0 the small
-// white-noise matrices were far off (WHITE_NOISE_2X2 gave 0% light at 25% grey),
-// and averaged over greys from 5% to 95% BAYER_2X2 came out 40% light, not 50%,
-// because "t - 127" shifted every threshold down by an eighth of a palette step.
+// the right coverage, which needs the thresholds to be centred on 0. This catches
+// small matrices with unevenly spaced values (the white-noise ones) and any bias
+// that shifts every threshold the same way (most visible with BAYER_2X2).
 TEST(ordered_all_matrices_coverage)
 {
     const Color dark(0x222323), light(0xf0f6f0);
@@ -664,8 +662,7 @@ TEST(ordered_all_matrices_coverage)
 }
 
 // Error is carried in float, so even a 1-level error is diffused instead of being
-// truncated away (Q1). In v1.0.0 a grey 1% of the way from dark to light came
-// out 100% dark.
+// truncated away: a grey 1% of the way from dark to light comes out about 1% light.
 TEST(error_diffusion_keeps_small_error)
 {
     const Color dark(0x222323), light(0xf0f6f0);
@@ -683,7 +680,7 @@ TEST(error_diffusion_keeps_small_error)
     }
 }
 
-// Alpha (D3): fully transparent pixels pass through unchanged and play no part in
+// Alpha: fully transparent pixels pass through unchanged and play no part in
 // error diffusion; every other pixel keeps its alpha. Checked for every quantising
 // operation.
 TEST(alpha_preserved)
@@ -873,8 +870,8 @@ TEST(ed_kernel_sums)
     }
 }
 
-// The B6 inputs from REVIEW.md: each must either be rejected (non-zero exit, a
-// readable message, no crash) or, where the input is legitimate, succeed correctly.
+// Bad command lines: each must either be rejected (non-zero exit, a readable
+// message, no crash) or, where the input is legitimate, succeed correctly.
 TEST(cli_rejects_bad_input)
 {
     if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
@@ -946,14 +943,9 @@ TEST(cli_rejects_bad_input)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Phase 4 (internal refactor) tests
-// ---------------------------------------------------------------------------
-
-// Phase 4 must not change any output. These hashes of the pixel data (FNV-1a over RGBA,
-// row by row) were taken from the Phase 3 build, which was also compared byte for byte
-// against Phase 4 on 885 CLI runs. Gamma correction (-a) and temporal dithering are left
-// out: -a goes through std::pow, whose last bit can differ between C libraries, and
+// Guards against unintended output changes. These are hashes of the pixel data (FNV-1a
+// over RGBA, row by row) from a known-good build. Gamma correction (-a) and temporal
+// dithering are left out: -a goes through std::pow, whose last bit can differ between C libraries, and
 // temporal output is random. If you change an output on purpose, update its hash here
 // (the failure message prints the new value).
 TEST(outputs_unchanged)
@@ -970,7 +962,6 @@ TEST(outputs_unchanged)
         {"convolve emboss.csv", 0x72d65f5f59b587d2ull},
         {"reduce EUCLIDEAN", 0x15c83a4b4cdbf506ull},
         {"reduce MANHATTAN", 0x4b8e67d05202b89dull},
-        // changed on purpose in Phase 5.1 (histogram mapping replaced the range stretch)
         {"reduce UNIFORM_HISTOGRAM", 0xa710f4065bafc0caull},
         {"error_diffusion LINEAR RASTER", 0xffad6746f1a4afd1ull},
         {"error_diffusion LINEAR SERPENTINE", 0x87ca40a270529c5bull},
@@ -1065,7 +1056,7 @@ TEST(outputs_unchanged)
     }
 }
 
-// Enum-like arguments are parsed once (4.1): every name round-trips, and anything else,
+// Enum-like arguments are parsed once: every name round-trips, and anything else,
 // including a different case, is rejected.
 TEST(enum_names_round_trip)
 {
@@ -1093,8 +1084,8 @@ TEST(enum_names_round_trip)
     CHECK(enum_names<ScanPattern>() == "RASTER, SERPENTINE");
 }
 
-// Library code reports bad input by throwing DitherError instead of exiting (4.3), so
-// these can now be checked in-process.
+// Library code reports bad input by throwing DitherError rather than exiting, so
+// these can be checked in-process.
 TEST(library_errors_throw)
 {
     auto throws = [](const std::string& label, const std::function<void()>& fn) {
@@ -1150,7 +1141,7 @@ TEST(library_errors_throw)
     });
 }
 
-// The shared csv matrix parser (4.4) ignores blank lines (trailing ones included),
+// The shared csv matrix parser ignores blank lines (trailing ones included),
 // Windows line endings, spaces and a leading '+', so all of these read the same.
 TEST(csv_matrix_parser)
 {
@@ -1172,7 +1163,7 @@ TEST(csv_matrix_parser)
         CHECK_MSG(Convolve(path).kernel == expected, label + ": Convolve read a different kernel");
     }
 
-    // a threshold matrix with a trailing blank line used to be rejected as "not consistent across rows"
+    // a trailing blank line does not count as a row of a different length
     const std::string threshold = write_text("csv_threshold.csv", "0,128\n192,64\n\n").string();
     CHECK(Ordered(threshold).threshold_matrix == Ordered("BAYER_2X2").threshold_matrix);
 
@@ -1181,7 +1172,7 @@ TEST(csv_matrix_parser)
     CHECK(Grayscale(weights).weights == (Grayscale::Weights{0.299, 0.587, 0.114}));
 }
 
-// -b reports each step once the output has been saved, and nothing when saving fails (4.6, Q11).
+// -b reports each step once the output has been saved, and nothing when saving fails.
 TEST(benchmark_report)
 {
     if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
@@ -1213,11 +1204,7 @@ TEST(benchmark_report)
     CHECK_MSG(failed.output.find("total:") == std::string::npos, "a time was printed although saving failed: " + failed.output);
 }
 
-// ---------------------------------------------------------------------------
-// Phase 5 (spec decisions) tests
-// ---------------------------------------------------------------------------
-
-// 5.1 (D1 option B): UNIFORM_HISTOGRAM equalises the image's luminance histogram onto the
+// UNIFORM_HISTOGRAM equalises the image's luminance histogram onto the
 // palette, so each colour covers about 1/N of the image even when the image is mostly dark.
 // Checked for reduce, error diffusion (both scan patterns) and ordered, with and without -a.
 TEST(uniform_hist_equal_shares)
@@ -1260,7 +1247,7 @@ TEST(uniform_hist_equal_shares)
     CHECK(same_rgb(d.image.get_pixel(W - 1, H - 1), Color(0xfbbbad)));
 }
 
-// 5.2 (D2): only one of -r, -e, -d and -t per run; -g and -c still combine with any of them.
+// Only one of -r, -e, -d and -t per run; -g and -c still combine with any of them.
 TEST(cli_one_quantiser)
 {
     if(g_dither_binary.empty() || !fs::exists(g_dither_binary))
@@ -1292,7 +1279,7 @@ TEST(cli_one_quantiser)
     }
 }
 
-// 5.3 (D5): PWM is deterministic. Each pixel shows the lighter colour in exactly
+// PWM is deterministic. Each pixel shows the lighter colour in exactly
 // round(duty * frames) frames, and the blue-noise phases spread those frames evenly, so every
 // frame has the same share of lighter pixels (no global flicker).
 TEST(pwm_deterministic)
@@ -1383,7 +1370,7 @@ TEST(pwm_deterministic)
     CHECK_MSG(std::any_of(per_pixel.begin(), per_pixel.end(), [&](std::size_t n) { return n != expected_lighter; }), "STOCHASTIC_PWM should vary per pixel");
 }
 
-// 5.4 (S18): the algorithm is Jarvis-Judice-Ninke; the old spelling is still accepted.
+// The algorithm is Jarvis-Judice-Ninke; the JARVICE_JUDICE_NINKE spelling is also accepted.
 TEST(jarvis_alias)
 {
     CHECK(ErrorDiffusion::has_preset("JARVIS_JUDICE_NINKE"));
@@ -1401,7 +1388,7 @@ TEST(jarvis_alias)
     CHECK(std::find(names.begin(), names.end(), "JARVICE_JUDICE_NINKE") == names.end());
 }
 
-// 5.5 (D4): with -a, convolution runs in linear light. Averaging black and white gives 50%
+// With -a, convolution runs in linear light. Averaging black and white gives 50%
 // linear light (sRGB 188); without -a it gives the sRGB midpoint (128).
 TEST(convolve_linear_light)
 {

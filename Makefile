@@ -5,7 +5,7 @@ SDIR = ./src
 TDIR = ./tests
 
 CC = g++
-# -Wsign-conversion catches signed/unsigned mix-ups such as REVIEW B1
+# -Wsign-conversion catches signed/unsigned mix-ups in arithmetic
 WARNINGS = -Wall -Wextra -Wconversion -Wsign-conversion
 CFLAGS = -I$(IDIR) -std=c++23 -O2 $(WARNINGS) -MMD -MP
 

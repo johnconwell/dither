@@ -14,10 +14,10 @@ public:
     void save(const std::string& file_name) const;
 
     void grayscale(const std::string& name_grayscale_weights, bool gamma_correction);
-    // with gamma_correction the kernel is applied in linear light (D4)
+    // with gamma_correction the kernel is applied in linear light
     void convolve(const std::string& name_kernel, bool gamma_correction = false);
     // UNIFORM_HISTOGRAM maps through the image's luminance histogram so each palette colour gets
-    // about the same share of the image (reduce, error_diffusion and ordered; ROADMAP 5.1)
+    // about the same share of the image (reduce, error_diffusion and ordered)
     void reduce(MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
     void error_diffusion(const std::string& name_algorithm, ScanPattern scan_pattern, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);
     void ordered(const std::string& name_threshold_matrix, MappingMethod mapping_method, const std::string& name_palette, bool gamma_correction);

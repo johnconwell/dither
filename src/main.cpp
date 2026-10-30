@@ -19,7 +19,7 @@ namespace
         }
 
         // operations always run in this order, whatever order the flags were given in;
-        // CLI allows at most one of reduce, error diffusion, ordered and temporal (D2)
+        // CLI allows at most one of reduce, error diffusion, ordered and temporal
         Benchmark benchmark;
         benchmark.start();
         Dither dither;
@@ -65,7 +65,7 @@ namespace
         dither.save(cli.file_path_output);
         benchmark.step("save");
 
-        // reported only once the output has been saved successfully (Q11)
+        // reported only once the output has been saved successfully
         if(cli.benchmark)
         {
             benchmark.report(std::cout, cli.file_path_output);

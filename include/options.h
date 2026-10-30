@@ -7,7 +7,7 @@
 #include <string_view> // std::string_view
 
 // Enum-like command line arguments, parsed once in CLI and passed down as enums, so the
-// per-pixel code never compares strings (ROADMAP 4.1, REVIEW §2.3 point 1).
+// per-pixel code never compares strings.
 
 enum class MappingMethod
 {
@@ -25,9 +25,9 @@ enum class ScanPattern
 enum class TemporalMethod
 {
     // deterministic: each pixel shows the lighter colour in exactly round(duty * frames) frames,
-    // starting at a blue-noise phase (ROADMAP 5.3, D5)
+    // starting at a blue-noise phase
     PWM,
-    // the v1 behaviour: each frame draws a random number against the duty cycle
+    // each frame independently draws a random number against the duty cycle
     STOCHASTIC_PWM,
     RANDOM,
 };

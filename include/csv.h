@@ -9,7 +9,7 @@ namespace csv
     using Matrix = std::vector<std::vector<double>>;
 
     // Reads a numeric matrix from a csv file: one row per line, values separated by commas.
-    // Shared by convolution kernels, threshold matrices and grayscale weights (ROADMAP 4.4).
+    // Used for convolution kernels, threshold matrices and grayscale weights.
     // - blank lines (including trailing ones) and Windows line endings are ignored
     // - spaces around values and a leading '+' are allowed
     // - every row must have the same number of values

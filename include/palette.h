@@ -24,14 +24,14 @@ public:
 
     // Choose the working space. nullptr = sRGB values as float; otherwise the palette is
     // linearised once with this transfer function, so pixels and palette are compared in
-    // the same space (B3). Call before sort() and the searches below.
+    // the same space. Call before sort() and the searches below.
     void set_working_space(const Transfer* transfer);
 
     // sort darkest to lightest by working-space HSL lightness
     void sort();
 
     // index of the nearest palette colour to a working-space value. UNIFORM_HISTOGRAM is not a
-    // per-pixel distance (Dither maps it through the image's luminance histogram, ROADMAP 5.1),
+    // per-pixel distance (Dither maps it through the image's luminance histogram),
     // so here it falls back to EUCLIDEAN_DISTANCE.
     std::size_t nearest_index(const RGBf& input, MappingMethod mapping_method) const;
     int nearest_index_lighter(const RGBf& input) const;

@@ -5,7 +5,7 @@
 #include <string> // std::string
 
 // Command line arguments. Enum-like values are parsed and validated here, once, so bad input
-// is rejected before any work is done (REVIEW B6, §2.3 point 1).
+// is rejected before the input image is loaded.
 class CLI
 {
 public:
@@ -32,7 +32,7 @@ public:
     bool temporal = false;
     TemporalMethod temporal_method = TemporalMethod::PWM;
     std::size_t temporal_frames = 0;
-    // used by whichever one of -r, -e, -d and -t was given; combining them is rejected (D2)
+    // used by whichever one of -r, -e, -d and -t was given; combining them is rejected
     MappingMethod mapping_method = MappingMethod::EUCLIDEAN_DISTANCE;
     std::string palette;
     bool benchmark = false;

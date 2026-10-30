@@ -1,7 +1,6 @@
-// Built-in noise threshold matrices (ROADMAP 4.2). Generated from the data in v1.1 include/ordered.h;
-// each one equals data/threshold_matrixes/<name>.csv (checked by the presets_match_csv test).
-// Stored as bytes, row by row: a quarter of the size of the old double tables, and only the
-// matrix that is asked for is expanded. The Bayer matrices are generated in code (ordered.cpp).
+// Built-in noise threshold matrices. Each one equals data/threshold_matrixes/<name>.csv
+// (checked by the presets_match_csv test). Stored as bytes, row by row; only the matrix that
+// is asked for is expanded. The Bayer matrices are generated in code (ordered.cpp).
 
 #include "ordered_tables.h"
 

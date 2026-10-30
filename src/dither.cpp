@@ -22,9 +22,9 @@ void Dither::save(const std::string& file_name) const
 
 namespace
 {
-    // Phase 3 working buffer: every pixel of frame 0 as float, in sRGB or linear light, plus its
+    // Working buffer: every pixel of frame 0 as float, in sRGB or linear light, plus its
     // alpha. All dither maths happens here; only the chosen palette colour's original sRGB value is
-    // written back to the image, so nothing is truncated to 8 bits along the way (B3, Q1, Q6).
+    // written back to the image, so nothing is truncated to 8 bits along the way.
     struct Working
     {
         std::size_t width = 0;
@@ -33,7 +33,7 @@ namespace
         std::vector<int> alpha;
 
         std::size_t index(std::size_t x, std::size_t y) const { return y * width + x; }
-        // fully transparent pixels pass through unchanged, spread no error and receive none (D3)
+        // fully transparent pixels pass through unchanged, spread no error and receive none
         bool transparent(std::size_t i) const { return alpha[i] == 0; }
     };
 
@@ -60,7 +60,7 @@ namespace
         return w;
     }
 
-    // the palette's original sRGB colour, with the source pixel's alpha kept (D3)
+    // the palette's original sRGB colour, with the source pixel's alpha kept
     Color output_color(const Palette& palette, std::size_t index_palette, int alpha)
     {
         Color color = palette.get_color_at(index_palette);
@@ -73,9 +73,9 @@ namespace
 
     // Threshold matrix -> offsets centred on 0 in (-0.5, 0.5), using each value's mid-rank in the
     // matrix: (number below + half the number equal) / count - 0.5. For the Bayer and blue-noise
-    // matrices (evenly spaced values k * 256 / N) this is exactly (k + 0.5) / N - 0.5, which removes
-    // the old "t - 127" bias (Q3); for the small white-noise matrices it also removes the bias of
-    // their uneven random values, so every matrix reproduces flat greys at the right coverage.
+    // matrices (evenly spaced values k * 256 / N) this is exactly (k + 0.5) / N - 0.5. Using ranks
+    // rather than raw values also centres the small white-noise matrices, whose random values are
+    // unevenly spaced, so every matrix reproduces flat greys at the right coverage.
     std::vector<std::vector<float>> centred_thresholds(const std::vector<std::vector<double>>& matrix)
     {
         std::vector<double> sorted;
@@ -103,7 +103,7 @@ namespace
         return offsets;
     }
 
-    // UNIFORM_HISTOGRAM (ROADMAP 5.1, D1 option B): histogram equalisation onto the palette.
+    // UNIFORM_HISTOGRAM: histogram equalisation onto the palette.
     // The palette is sorted darkest to lightest, and every pixel gets a position u in [0, N]
     // along it from the image's luminance CDF: u = N * (pixels darker + half the pixels equal) /
     // pixels. Palette colour k covers [k, k + 1), so reducing with floor(u) uses each colour for
@@ -216,7 +216,7 @@ namespace
 
                 for(const Tap& tap : taps)
                 {
-                    // signed coordinates, so the bounds check is real (Q12)
+                    // signed coordinates, so taps to the left of or above the image fail the bounds check
                     const int new_x = x + direction * tap.dx;
                     const int new_y = y + tap.dy;
 
@@ -274,7 +274,7 @@ void Dither::grayscale(const std::string& name_grayscale_weights, bool gamma_cor
 void Dither::convolve(const std::string& name_kernel, bool gamma_correction)
 {
     const Convolve convolve = Convolve(name_kernel);
-    // with -a the image is convolved in linear light and encoded back with one rounding (D4)
+    // with -a the image is convolved in linear light and encoded back with one rounding
     const Transfer transfer(image.get_gamma());
     const std::vector<std::vector<double>>& kernel = convolve.kernel;
     const int image_height = static_cast<int>(image.get_height());
@@ -380,7 +380,7 @@ void Dither::error_diffusion(const std::string& name_algorithm, ScanPattern scan
     const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
     palette.set_working_space(working_space);
-    // the working buffer doubles as the error buffer: diffused error is added straight onto it, in float (Q1)
+    // the working buffer doubles as the error buffer: diffused error is added straight onto it, in float
     Working w = make_working(image, working_space);
     std::vector<Tap> taps;
 
@@ -480,7 +480,8 @@ void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, Mappin
         throw DitherError("temporal dithering needs at least 1 frame");
     }
 
-    // UNIFORM_HISTOGRAM is documented as not valid with -t (S6); CLI rejects it before this point
+    // temporal dithering picks colours by per-pixel distance, which UNIFORM_HISTOGRAM is not;
+    // CLI rejects it before this point
     if(mapping_method == MappingMethod::UNIFORM_HISTOGRAM)
     {
         throw DitherError("Invalid mapping method for temporal dithering - " + std::string(enum_name(mapping_method)));
@@ -506,7 +507,7 @@ void Dither::temporal(TemporalMethod temporal_method, std::size_t frames, Mappin
 
     std::vector<double> weights;
 
-    // deterministic PWM (5.3): each pixel starts its run of lighter frames at a phase taken from
+    // deterministic PWM: each pixel starts its run of lighter frames at a phase taken from
     // a blue-noise matrix, so neighbouring pixels with the same duty cycle switch in different
     // frames and every frame shows about the same overall brightness
     std::vector<std::vector<float>> phases;

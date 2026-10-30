@@ -10,7 +10,7 @@
 
 namespace
 {
-    // built once, on first use, and shared (ROADMAP 4.2)
+    // built once, on first use, and shared
     const std::unordered_map<std::string, std::vector<Color>>& presets()
     {
         static const std::unordered_map<std::string, std::vector<Color>> PRESETS = {

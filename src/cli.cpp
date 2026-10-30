@@ -118,7 +118,7 @@ void CLI::parse(int argc, const char* argv[])
         convolve_kernel = result["convolve"].as<std::string>();
     }
 
-    // only one quantising operation per run (ROADMAP 5.2, D2); -g and -c are pre-processing and combine freely
+    // only one quantising operation per run; -g and -c are pre-processing and combine freely
     const std::size_t quantisers = result.count("reduce") + result.count("error_diffusion") + result.count("ordered") + result.count("temporal");
 
     if(quantisers > 1)
@@ -194,7 +194,7 @@ void CLI::parse(int argc, const char* argv[])
     {
         temporal_method = parse_or_throw<TemporalMethod>("temporal dithering method", temporal_method_text);
 
-        // UNIFORM_HISTOGRAM is documented as not valid with -t (S6)
+        // temporal dithering picks colours by per-pixel distance, so UNIFORM_HISTOGRAM is not valid with -t
         const std::optional<MappingMethod> method = parse_enum<MappingMethod>(mapping_method_text);
 
         if(!method || *method == MappingMethod::UNIFORM_HISTOGRAM)

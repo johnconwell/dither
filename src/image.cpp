@@ -87,7 +87,7 @@ void Image::load(const std::string& file_name)
 
 void Image::save(const std::string& file_name) const
 {
-    // decide the format from the extension (case-insensitive), not from a substring of the whole path (Q10)
+    // decide the format from the extension (case-insensitive)
     std::string extension = std::filesystem::path(file_name).extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 

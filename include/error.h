@@ -5,7 +5,7 @@
 
 // Thrown by library code for bad input (unknown preset, unreadable file, invalid value...).
 // Nothing below main() exits the process: main catches this, prints "Error: <message>"
-// and returns EXIT_FAILURE (ROADMAP 4.3, REVIEW §2.3 point 4).
+// and returns EXIT_FAILURE.
 class DitherError : public std::runtime_error
 {
 public:

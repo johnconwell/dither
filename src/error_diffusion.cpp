@@ -6,7 +6,7 @@ namespace
 {
     using Taps = std::vector<ErrorDiffusion::Tap>;
 
-    // built once, on first use, and shared (ROADMAP 4.2)
+    // built once, on first use, and shared
     const std::unordered_map<std::string, Taps>& presets()
     {
         //                      x-2  x-1   x  x+1  x+2
@@ -59,7 +59,7 @@ namespace
         return PRESETS;
     }
 
-    // old spellings that are still accepted (S18: the algorithm is Jarvis-Judice-Ninke)
+    // alternative spellings that are also accepted, mapped to the canonical preset name
     const std::unordered_map<std::string, std::string>& aliases()
     {
         static const std::unordered_map<std::string, std::string> ALIASES = {

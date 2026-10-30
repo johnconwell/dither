@@ -14,7 +14,7 @@ public:
     static inline constexpr std::size_t INDEX_G = 1;
     static inline constexpr std::size_t INDEX_B = 2;
     static inline constexpr std::size_t INDEX_A = 3;
-    // int, so channel arithmetic never mixes signed and unsigned values (the cause of B1)
+    // int, so channel arithmetic never mixes signed and unsigned values
     static inline constexpr int CHANNEL_MAX = 255;
     static inline constexpr std::size_t CHANNEL_VALUES = 256;
     static inline constexpr unsigned int HEX_MAX = 0xffffff;
@@ -38,9 +38,9 @@ public:
     int a = CHANNEL_MAX;
 };
 
-// Working colour for the dither maths (Phase 3): float channels on the 0-255 scale, either
+// Working colour for the dither maths: float channels on the 0-255 scale, either
 // sRGB-encoded or linear light. Keeping the working values in float means diffused error,
-// distances and linear values are never truncated to 8 bits (B3, Q1, Q6).
+// distances and linear values are never truncated to 8 bits.
 struct RGBf
 {
     float r = 0.0f;
