@@ -70,17 +70,37 @@ Palette::Palette(std::string name)
         }
     }
 
+    set_working_space(nullptr);
+
     return;
 }
 
-std::size_t Palette::size()
+std::size_t Palette::size() const
 {
     return colors.size();
 }
 
-Color Palette::get_color_at(std::size_t index)
+Color Palette::get_color_at(std::size_t index) const
 {
     return colors[index];
+}
+
+const RGBf& Palette::get_working_at(std::size_t index) const
+{
+    return working[index];
+}
+
+void Palette::set_working_space(const Transfer* transfer)
+{
+    working.clear();
+    working.reserve(colors.size());
+
+    for(const Color& color : colors)
+    {
+        working.push_back(transfer ? transfer->to_linear(color) : RGBf(color));
+    }
+
+    return;
 }
 
 void Palette::sort()
@@ -91,11 +111,10 @@ void Palette::sort()
     {
         for(std::size_t index_secondary = index_primary + 1; index_secondary < colors_size; index_secondary++)
         {
-            if(colors[index_secondary].get_lightness() < colors[index_primary].get_lightness())
+            if(working[index_secondary].lightness() < working[index_primary].lightness())
             {
-                Color temp = colors[index_primary];
-                colors[index_primary] = colors[index_secondary];
-                colors[index_secondary] = temp;
+                std::swap(colors[index_primary], colors[index_secondary]);
+                std::swap(working[index_primary], working[index_secondary]);
             }
         }
     }
@@ -103,21 +122,36 @@ void Palette::sort()
     return;
 }
 
-Color Palette::nearest(Color input, std::string mapping_method, std::vector<Color> input_range, std::vector<Color> output_range, std::vector<double> slope)
+RGBf Palette::RangeMap::apply(const RGBf& c) const
 {
-    int index_nearest = -1;
-    int distance_squared_nearest = INT_MAX;
-    const std::size_t colors_size = colors.size();
+    auto map_channel = [](float value, float channel_slope, float input_min, float output_min) {
+        return std::isnan(channel_slope) ? value : output_min + channel_slope * (value - input_min);
+    };
 
-    if(mapping_method == "EUCLIDEAN_DISTANCE")
+    return {
+        map_channel(c.r, slope.r, input_min.r, output_min.r),
+        map_channel(c.g, slope.g, input_min.g, output_min.g),
+        map_channel(c.b, slope.b, input_min.b, output_min.b),
+    };
+}
+
+std::size_t Palette::nearest_index(const RGBf& input, const std::string& mapping_method, const RangeMap* range_map) const
+{
+    std::size_t index_nearest = 0;
+    double distance_nearest = std::numeric_limits<double>::infinity();
+    const std::size_t colors_size = working.size();
+
+    if(mapping_method == "EUCLIDEAN_DISTANCE" || mapping_method == "UNIFORM_HISTOGRAM")
     {
+        const RGBf target = (mapping_method == "UNIFORM_HISTOGRAM" && range_map) ? range_map->apply(input) : input;
+
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
-            const int distance_squared = input.distance_euclidean_squared(colors[index_palette]);
-            
-            if(distance_squared < distance_squared_nearest)
+            const double distance = target.distance_euclidean_squared(working[index_palette]);
+
+            if(distance < distance_nearest)
             {
-                distance_squared_nearest = distance_squared;
+                distance_nearest = distance;
                 index_nearest = index_palette;
             }
         }
@@ -126,35 +160,11 @@ Color Palette::nearest(Color input, std::string mapping_method, std::vector<Colo
     {
         for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
         {
-            const int distance_squared = input.distance_manhattan(colors[index_palette]);
+            const double distance = input.distance_manhattan(working[index_palette]);
 
-            if(distance_squared < distance_squared_nearest)
+            if(distance < distance_nearest)
             {
-                distance_squared_nearest = distance_squared;
-                index_nearest = index_palette;
-            }
-        }
-    }
-    else if(mapping_method == "UNIFORM_HISTOGRAM")
-    {
-        const std::size_t INDEX_COLOR_MIN = 0;
-        // a channel with no range in the image (slope = UNMAPPED) passes straight through to the nearest-colour search
-        auto map_channel = [&](int value, std::size_t index_channel, int input_min, int output_min) {
-            const double channel_slope = slope[index_channel];
-            return std::isnan(channel_slope) ? value : static_cast<int>(output_min + channel_slope * (value - input_min));
-        };
-        const int color_mapped_r = map_channel(input.r, Color::INDEX_R, input_range[INDEX_COLOR_MIN].r, output_range[INDEX_COLOR_MIN].r);
-        const int color_mapped_g = map_channel(input.g, Color::INDEX_G, input_range[INDEX_COLOR_MIN].g, output_range[INDEX_COLOR_MIN].g);
-        const int color_mapped_b = map_channel(input.b, Color::INDEX_B, input_range[INDEX_COLOR_MIN].b, output_range[INDEX_COLOR_MIN].b);
-        Color color_mapped = Color(color_mapped_r, color_mapped_g, color_mapped_b, Color::CHANNEL_MAX);
-
-        for(std::size_t index_palette = 0; index_palette < colors_size; index_palette++)
-        {
-            const int distance_squared = color_mapped.distance_euclidean_squared(colors[index_palette]);
-
-            if(distance_squared < distance_squared_nearest)
-            {
-                distance_squared_nearest = distance_squared;
+                distance_nearest = distance;
                 index_nearest = index_palette;
             }
         }
@@ -165,16 +175,16 @@ Color Palette::nearest(Color input, std::string mapping_method, std::vector<Colo
         std::exit(EXIT_FAILURE);
     }
 
-    return colors[index_nearest];
+    return index_nearest;
 }
 
-int Palette::nearest_index_lighter(Color input)
+int Palette::nearest_index_lighter(const RGBf& input) const
 {
-    double input_lightness = input.get_lightness();
-    std::size_t palette_size = colors.size();
+    const double input_lightness = input.lightness();
+    const int palette_size = static_cast<int>(working.size());
 
     // none of the colors in the palette are lighter, so return error value
-    if(colors[palette_size - 1].get_lightness() <= input_lightness)
+    if(working[static_cast<std::size_t>(palette_size - 1)].lightness() <= input_lightness)
     {
         return -1;
     }
@@ -182,81 +192,84 @@ int Palette::nearest_index_lighter(Color input)
     for(int index_palette = palette_size - 2; index_palette >= 0; index_palette--)
     {
         // found the first darker color, so the next lighter color on the palette must be the nearest lighter palette color
-        if(colors[index_palette].get_lightness() < input_lightness)
+        if(working[static_cast<std::size_t>(index_palette)].lightness() < input_lightness)
         {
             return index_palette + 1;
         }
     }
 
-    // no lighter colors found, so the nearest lighter color must be the last palette color
-    return palette_size - 1;
+    // no darker colors found, so the nearest lighter color must be the first palette color
+    return 0;
 }
 
-int Palette::nearest_index_darker(Color input)
+int Palette::nearest_index_darker(const RGBf& input) const
 {
-    double input_lightness = input.get_lightness();
-    std::size_t palette_size = colors.size();
+    const double input_lightness = input.lightness();
+    const int palette_size = static_cast<int>(working.size());
 
     // none of the colors in the palette are darker, so return error value
-    if(colors[0].get_lightness() >= input_lightness)
+    if(working[0].lightness() >= input_lightness)
     {
         return -1;
     }
 
-    for(int index_palette = 1; index_palette < static_cast<int>(palette_size); index_palette++)
+    for(int index_palette = 1; index_palette < palette_size; index_palette++)
     {
         // found the first lighter color, so the next darker color on the palette must be the nearest darker palette color
-        if(colors[index_palette].get_lightness() > input_lightness)
+        if(working[static_cast<std::size_t>(index_palette)].lightness() > input_lightness)
         {
             return index_palette - 1;
         }
     }
 
-    // no darker colors found, so the nearest darker color must be the first palette color
-    return 0;
+    // no lighter colors found, so the nearest darker color must be the last palette color
+    return palette_size - 1;
 }
 
-Color Palette::pitch_vector()
+RGBf Palette::pitch_vector() const
 {
-    const std::size_t colors_size = colors.size();
-    Color distance_vector = Color(0, 0, 0, Color::CHANNEL_MAX);
+    const std::size_t colors_size = working.size();
+    RGBf pitch;
 
     // a single colour has no spread, and dividing by colors_size - 1 would divide by zero
     if(colors_size < 2)
     {
-        return distance_vector;
+        return pitch;
     }
 
-    for(std::size_t index_colors = 0; index_colors < colors_size - 1; index_colors++)
+    for(std::size_t index_colors = 0; index_colors + 1 < colors_size; index_colors++)
     {
-        distance_vector.r += std::abs(colors[index_colors].r - colors[index_colors + 1].r);
-        distance_vector.g += std::abs(colors[index_colors].g - colors[index_colors + 1].g);
-        distance_vector.b += std::abs(colors[index_colors].b - colors[index_colors + 1].b);
+        pitch.r += std::fabs(working[index_colors].r - working[index_colors + 1].r);
+        pitch.g += std::fabs(working[index_colors].g - working[index_colors + 1].g);
+        pitch.b += std::fabs(working[index_colors].b - working[index_colors + 1].b);
     }
 
-    distance_vector.r /= static_cast<double>(colors_size - 1);
-    distance_vector.g /= static_cast<double>(colors_size - 1);
-    distance_vector.b /= static_cast<double>(colors_size - 1);
-
-    return distance_vector;
+    return pitch * (1.0f / static_cast<float>(colors_size - 1));
 }
 
-std::vector<Color> Palette::get_color_range()
+Palette::RangeMap Palette::range_map(const RGBf& image_min, const RGBf& image_max) const
 {
-    std::vector<Color> color_range = {
-        Color(Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX),
-        Color(0, 0, 0, Color::CHANNEL_MAX)
-    };
-    const std::size_t palette_size = colors.size();
+    RGBf palette_min(std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
+    RGBf palette_max(-palette_min.r, -palette_min.g, -palette_min.b);
 
-    for(std::size_t index_palette = 0; index_palette < palette_size; index_palette++)
+    for(const RGBf& c : working)
     {
-        const Color color = colors[index_palette];
-
-        color.expand_range(color_range);
+        palette_min = {std::min(palette_min.r, c.r), std::min(palette_min.g, c.g), std::min(palette_min.b, c.b)};
+        palette_max = {std::max(palette_max.r, c.r), std::max(palette_max.g, c.g), std::max(palette_max.b, c.b)};
     }
 
-    return color_range;
+    auto channel_slope = [](float in_min, float in_max, float out_min, float out_max) {
+        // flat channel: nothing to stretch, and dividing would be a divide by zero (B4)
+        return in_max <= in_min ? UNMAPPED : (out_max - out_min) / (in_max - in_min);
+    };
+
+    return {
+        image_min,
+        palette_min,
+        RGBf(channel_slope(image_min.r, image_max.r, palette_min.r, palette_max.r),
+             channel_slope(image_min.g, image_max.g, palette_min.g, palette_max.g),
+             channel_slope(image_min.b, image_max.b, palette_min.b, palette_max.b)),
+    };
 }
 
 std::string Palette::to_string()
@@ -270,26 +283,4 @@ std::string Palette::to_string()
     }
 
     return output;
-}
-
-std::vector<double> Palette::range_slope(const std::vector<Color>& image_range, const std::vector<Color>& palette_range)
-{
-    const std::size_t INDEX_COLOR_MIN = 0;
-    const std::size_t INDEX_COLOR_MAX = 1;
-
-    auto channel_slope = [](int image_min, int image_max, int palette_min, int palette_max) {
-        // flat channel: nothing to stretch, and dividing would be a divide by zero (B4)
-        if(image_max <= image_min)
-        {
-            return UNMAPPED;
-        }
-
-        return static_cast<double>(palette_max - palette_min) / static_cast<double>(image_max - image_min);
-    };
-
-    return {
-        channel_slope(image_range[INDEX_COLOR_MIN].r, image_range[INDEX_COLOR_MAX].r, palette_range[INDEX_COLOR_MIN].r, palette_range[INDEX_COLOR_MAX].r),
-        channel_slope(image_range[INDEX_COLOR_MIN].g, image_range[INDEX_COLOR_MAX].g, palette_range[INDEX_COLOR_MIN].g, palette_range[INDEX_COLOR_MAX].g),
-        channel_slope(image_range[INDEX_COLOR_MIN].b, image_range[INDEX_COLOR_MAX].b, palette_range[INDEX_COLOR_MIN].b, palette_range[INDEX_COLOR_MAX].b),
-    };
 }

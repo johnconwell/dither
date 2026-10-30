@@ -9,6 +9,7 @@
 #include "palette.h"
 #include <algorithm> // std::clamp
 #include <cmath> // std::lround
+#include <limits> // std::numeric_limits
 #include <random> // std::random_device, std::mt19337, std::uniform_reaL_distribution
 #include <unordered_map> // std::unordered_map
 #include <vector> // std::vector

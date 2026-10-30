@@ -74,40 +74,6 @@ double Color::grayscale_value(std::vector<double> grayscale_weights)
     return static_cast<double>(r) * grayscale_weights[INDEX_R] + static_cast<double>(g) * grayscale_weights[INDEX_G] + static_cast<double>(b) * grayscale_weights[INDEX_B];
 }
 
-void Color::to_linear(double gamma)
-{
-    const double r_scaled = static_cast<double>(r) / static_cast<double>(CHANNEL_VALUES);
-    const double g_scaled = static_cast<double>(g) / static_cast<double>(CHANNEL_VALUES);
-    const double b_scaled = static_cast<double>(b) / static_cast<double>(CHANNEL_VALUES);
-
-    const double r_linear = (r_scaled < 0.04045) ? (r_scaled / 12.92) : pow((r_scaled + 0.055) / 1.055, gamma);
-    const double g_linear = (g_scaled < 0.04045) ? (g_scaled / 12.92) : pow((g_scaled + 0.055) / 1.055, gamma);
-    const double b_linear = (b_scaled < 0.04045) ? (b_scaled / 12.92) : pow((b_scaled + 0.055) / 1.055, gamma);
-
-    r = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * r_linear);
-    g = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * g_linear);
-    b = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * b_linear);
-
-    return;
-}
-
-void Color::to_srgb(double gamma)
-{
-    const double r_scaled = static_cast<double>(r) / static_cast<double>(CHANNEL_VALUES);
-    const double g_scaled = static_cast<double>(g) / static_cast<double>(CHANNEL_VALUES);
-    const double b_scaled = static_cast<double>(b) / static_cast<double>(CHANNEL_VALUES);
-
-    const double r_linear = (r_scaled < 0.0031308) ? (r_scaled * 12.92) : (1.055 * pow(r_scaled, 1.0 / gamma) - 0.055);
-    const double g_linear = (g_scaled < 0.0031308) ? (g_scaled * 12.92) : (1.055 * pow(g_scaled, 1.0 / gamma) - 0.055);
-    const double b_linear = (b_scaled < 0.0031308) ? (b_scaled * 12.92) : (1.055 * pow(b_scaled, 1.0 / gamma) - 0.055);
-
-    r = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * r_linear);
-    g = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * g_linear);
-    b = static_cast<int>(static_cast<double>(CHANNEL_VALUES) * b_linear);
-
-    return;
-}
-
 void Color::to_grayscale(std::vector<double> grayscale_weights)
 {
     double value = grayscale_value(grayscale_weights);
@@ -147,4 +113,59 @@ void Color::expand_range(std::vector<Color>& range) const
     range[INDEX_COLOR_MAX].b = std::max(range[INDEX_COLOR_MAX].b, b);
 
     return;
+}
+
+RGBf RGBf::clamped() const
+{
+    constexpr float MAX = static_cast<float>(Color::CHANNEL_MAX);
+    return {std::clamp(r, 0.0f, MAX), std::clamp(g, 0.0f, MAX), std::clamp(b, 0.0f, MAX)};
+}
+
+double RGBf::lightness() const
+{
+    return (static_cast<double>(std::max({r, g, b})) + static_cast<double>(std::min({r, g, b}))) / (2.0 * static_cast<double>(Color::CHANNEL_MAX));
+}
+
+double RGBf::distance_euclidean_squared(const RGBf& o) const
+{
+    const double dr = static_cast<double>(o.r) - r;
+    const double dg = static_cast<double>(o.g) - g;
+    const double db = static_cast<double>(o.b) - b;
+    return 0.2126 * dr * dr + 0.7152 * dg * dg + 0.0722 * db * db;
+}
+
+double RGBf::distance_euclidean(const RGBf& o) const
+{
+    return std::sqrt(distance_euclidean_squared(o));
+}
+
+double RGBf::distance_manhattan(const RGBf& o) const
+{
+    return std::fabs(static_cast<double>(o.r) - r) + std::fabs(static_cast<double>(o.g) - g) + std::fabs(static_cast<double>(o.b) - b);
+}
+
+namespace
+{
+    // standard sRGB transfer function, on 0-1 values
+    double srgb_decode(double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); }
+    double srgb_encode(double v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * std::pow(v, 1.0 / 2.4) - 0.055; }
+}
+
+Transfer::Transfer(double file_gamma) : gamma(file_gamma), lut{}
+{
+    const double MAX = static_cast<double>(Color::CHANNEL_MAX);
+
+    for(std::size_t i = 0; i < Color::CHANNEL_VALUES; i++)
+    {
+        const double v = static_cast<double>(i) / MAX;
+        lut[i] = static_cast<float>(MAX * (gamma > 0.0 ? std::pow(v, gamma) : srgb_decode(v)));
+    }
+}
+
+int Transfer::to_encoded(float linear) const
+{
+    const double MAX = static_cast<double>(Color::CHANNEL_MAX);
+    const double v = std::clamp(static_cast<double>(linear) / MAX, 0.0, 1.0);
+    const double encoded = gamma > 0.0 ? std::pow(v, 1.0 / gamma) : srgb_encode(v);
+    return static_cast<int>(std::lround(encoded * MAX));
 }

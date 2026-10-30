@@ -493,9 +493,10 @@ TEST(convolve_keeps_alpha_and_rounds)
     CHECK_MSG(wrong_value == 0, std::to_string(wrong_value) + " pixels were not rounded to nearest (0.97 * 10 should give 10)");
 }
 
-// Floyd-Steinberg to 2 colours in linear light. REVIEW.md B3 computes the correct
-// white fraction for boat.png as 0.273; the current code gives 0.193.
-XFAIL(gamma_linear_coverage, "B3: pixels linearised but palette left in sRGB")
+// 2 colours in linear light. REVIEW.md B3 computes the correct white fraction for
+// boat.png as 0.273 (the v1.0.0 code gave 0.193). Error diffusion and ordered
+// dithering should both land there.
+TEST(gamma_linear_coverage)
 {
     const fs::path boat = fs::path("input") / "boat.png";
     CHECK_MSG(fs::exists(boat), "input/boat.png is missing (run from the repository root)");
@@ -505,9 +506,251 @@ XFAIL(gamma_linear_coverage, "B3: pixels linearised but palette left in sRGB")
         return;
     }
 
-    Dither d = load(boat);
-    d.error_diffusion("FLOYD_STEINBERG", "RASTER", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", true);
-    CHECK_NEAR(fraction_of(d, Color(0xf0f6f0)), 0.273, 0.02);
+    Dither ed = load(boat);
+    ed.error_diffusion("FLOYD_STEINBERG", "RASTER", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", true);
+    CHECK_NEAR(fraction_of(ed, Color(0xf0f6f0)), 0.273, 0.02);
+
+    Dither od = load(boat);
+    od.ordered("BAYER_8X8", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", true);
+    CHECK_NEAR(fraction_of(od, Color(0xf0f6f0)), 0.273, 0.02);
+}
+
+// The sRGB curve and a pure gAMA power curve both round-trip every 8-bit level,
+// are strictly increasing, and hit the standard reference values (ROADMAP 3.2).
+TEST(transfer_round_trip)
+{
+    for(const double gamma : {0.0, 2.2, 1.8})
+    {
+        const Transfer t(gamma);
+        int round_trip_failures = 0;
+        int not_increasing = 0;
+
+        for(int v = 0; v < 256; v++)
+        {
+            round_trip_failures += t.to_encoded(t.to_linear(v)) == v ? 0 : 1;
+            not_increasing += (v > 0 && !(t.to_linear(v) > t.to_linear(v - 1))) ? 1 : 0;
+        }
+
+        const std::string label = gamma > 0.0 ? "gamma " + std::to_string(gamma) : "sRGB";
+        CHECK_MSG(round_trip_failures == 0, label + ": " + std::to_string(round_trip_failures) + " of 256 levels do not round-trip");
+        CHECK_MSG(not_increasing == 0, label + ": linear values are not strictly increasing");
+        CHECK_NEAR(t.to_linear(0), 0.0, 1e-6);
+        CHECK_NEAR(t.to_linear(255), 255.0, 1e-3);
+    }
+
+    // sRGB 128 is 21.586% linear; 10 is in the linear toe (10 / 255 / 12.92)
+    const Transfer srgb(0.0);
+    CHECK_NEAR(srgb.to_linear(128) / 255.0, 0.215861, 1e-5);
+    CHECK_NEAR(srgb.to_linear(10) / 255.0, 10.0 / 255.0 / 12.92, 1e-7);
+    CHECK_NEAR(Transfer(2.2).to_linear(128) / 255.0, std::pow(128.0 / 255.0, 2.2), 1e-6);
+}
+
+// PNG colour chunks: an sRGB chunk, or none, selects the sRGB curve (gamma 0);
+// gAMA on its own selects a pure power curve with the file's exponent.
+TEST(png_gamma_chunks)
+{
+    auto write_with = [](const std::string& name, bool gama, bool srgb) {
+        lodepng::State state;
+        state.info_png.gama_defined = gama ? 1 : 0;
+        state.info_png.gama_gamma = 45455; // 1 / 2.2
+        state.info_png.srgb_defined = srgb ? 1 : 0;
+        state.info_png.srgb_intent = 0;
+        state.encoder.auto_convert = 0;
+        std::vector<unsigned char> rgba(4 * 4 * 4, 128), png;
+        const fs::path p = tmp_path(name);
+        lodepng::encode(png, rgba, 4, 4, state);
+        lodepng::save_file(png, p.string());
+        return p;
+    };
+
+    CHECK_NEAR(load(write_with("chunks_none.png", false, false)).image.get_gamma(), 0.0, 1e-9);
+    CHECK_NEAR(load(write_with("chunks_gama.png", true, false)).image.get_gamma(), 2.2, 1e-3);
+    CHECK_NEAR(load(write_with("chunks_both.png", true, true)).image.get_gamma(), 0.0, 1e-9);
+}
+
+// Grayscale with -a weights the channels in linear light and rounds once, so a
+// grey ramp is unchanged and a colour gradient keeps (nearly) every grey level.
+// (v1.0.0 kept 163 of them.)
+TEST(grayscale_linear_levels)
+{
+    Dither ramp = load(write_png("grey_ramp.png", 256, 1, [](unsigned x, unsigned) {
+        const unsigned char v = static_cast<unsigned char>(x);
+        return RGBA{v, v, v, 255};
+    }));
+    ramp.grayscale("BT709", true);
+    int changed = 0;
+
+    for(unsigned x = 0; x < 256; x++)
+    {
+        const int v = static_cast<int>(x);
+        changed += same_rgb(ramp.image.get_pixel(x, 0), Color(v, v, v)) ? 0 : 1;
+    }
+
+    CHECK_MSG(changed == 0, std::to_string(changed) + " of 256 grey ramp levels changed");
+
+    Dither colour = load(write_png("colour_gradient.png", 256, 256, [](unsigned x, unsigned y) {
+        return RGBA{static_cast<unsigned char>(x), static_cast<unsigned char>(y), static_cast<unsigned char>((x + y) / 2), 255};
+    }));
+    colour.grayscale("BT709", true);
+    std::set<int> levels;
+
+    for(unsigned y = 0; y < 256; y++)
+    {
+        for(unsigned x = 0; x < 256; x++)
+        {
+            levels.insert(colour.image.get_pixel(x, y).r);
+        }
+    }
+
+    CHECK_MSG(levels.size() >= 250, "colour gradient kept " + std::to_string(levels.size()) + " grey levels, expected at least 250");
+}
+
+// Every built-in threshold matrix, not only BAYER_8X8, must reproduce flat greys at
+// the right coverage once thresholds are centred (Q3). In v1.0.0 the small
+// white-noise matrices were far off (WHITE_NOISE_2X2 gave 0% light at 25% grey),
+// and averaged over greys from 5% to 95% BAYER_2X2 came out 40% light, not 50%,
+// because "t - 127" shifted every threshold down by an eighth of a palette step.
+TEST(ordered_all_matrices_coverage)
+{
+    const Color dark(0x222323), light(0xf0f6f0);
+    std::vector<std::string> names;
+
+    for(const auto& entry : Ordered("BAYER_2X2").THRESHOLD_MATRIXES)
+    {
+        names.push_back(entry.first);
+    }
+
+    std::sort(names.begin(), names.end());
+
+    for(const double level : {0.25, 0.50, 0.75})
+    {
+        auto lerp = [&](int a, int b) { return static_cast<unsigned char>(std::lround(a + level * (b - a))); };
+        const RGBA grey{lerp(dark.r, light.r), lerp(dark.g, light.g), lerp(dark.b, light.b), 255};
+        const fs::path p = write_png("grey_all_" + std::to_string(static_cast<int>(level * 100)) + ".png", 256, 256, [&](unsigned, unsigned) { return grey; });
+
+        for(const std::string& name : names)
+        {
+            Dither d = load(p);
+            d.ordered(name, "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+            const double got = fraction_of(d, light);
+            CHECK_MSG(std::fabs(got - level) <= 0.02, name + ": " + std::to_string(static_cast<int>(level * 100)) + "% grey gave " + std::to_string(got) + " light");
+        }
+    }
+
+    // unbiased: over greys at 5%, 15%, ..., 95% the average coverage is 50%
+    std::vector<fs::path> ramp;
+
+    for(int step = 0; step < 10; step++)
+    {
+        const double level = 0.05 + 0.1 * step;
+        auto lerp = [&](int a, int b) { return static_cast<unsigned char>(std::lround(a + level * (b - a))); };
+        const RGBA grey{lerp(dark.r, light.r), lerp(dark.g, light.g), lerp(dark.b, light.b), 255};
+        ramp.push_back(write_png("grey_ramp_" + std::to_string(step) + ".png", 64, 64, [&](unsigned, unsigned) { return grey; }));
+    }
+
+    for(const std::string& name : names)
+    {
+        double total = 0.0;
+
+        for(const fs::path& p : ramp)
+        {
+            Dither d = load(p);
+            d.ordered(name, "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+            total += fraction_of(d, light);
+        }
+
+        CHECK_MSG(std::fabs(total / 10.0 - 0.5) <= 0.02, name + ": greys 5-95% averaged " + std::to_string(total / 10.0) + " light, expected 0.5");
+    }
+}
+
+// Error is carried in float, so even a 1-level error is diffused instead of being
+// truncated away (Q1). In v1.0.0 a grey 1% of the way from dark to light came
+// out 100% dark.
+TEST(error_diffusion_keeps_small_error)
+{
+    const Color dark(0x222323), light(0xf0f6f0);
+
+    for(const double level : {0.01, 0.99})
+    {
+        auto lerp = [&](int a, int b) { return static_cast<unsigned char>(std::lround(a + level * (b - a))); };
+        const RGBA grey{lerp(dark.r, light.r), lerp(dark.g, light.g), lerp(dark.b, light.b), 255};
+        // the exact level after rounding, measured with the same BT.709 weights as the distance
+        const double actual = (0.2126 * (grey.r - dark.r) + 0.7152 * (grey.g - dark.g) + 0.0722 * (grey.b - dark.b)) /
+                              (0.2126 * (light.r - dark.r) + 0.7152 * (light.g - dark.g) + 0.0722 * (light.b - dark.b));
+        Dither d = load(write_png("grey_ed_" + std::to_string(static_cast<int>(level * 100)) + ".png", 128, 128, [&](unsigned, unsigned) { return grey; }));
+        d.error_diffusion("FLOYD_STEINBERG", "RASTER", "EUCLIDEAN_DISTANCE", "1BIT_MONITOR_GLOW", false);
+        CHECK_NEAR(fraction_of(d, light), actual, 0.003);
+    }
+}
+
+// Alpha (D3): fully transparent pixels pass through unchanged and play no part in
+// error diffusion; every other pixel keeps its alpha. Checked for every quantising
+// operation.
+TEST(alpha_preserved)
+{
+    const unsigned W = 32, H = 16;
+    // left half transparent (its colour must not matter), right half a gradient with varying alpha
+    auto image_with = [&](unsigned char hidden) {
+        return [=](unsigned x, unsigned y) {
+            if(x < W / 2)
+            {
+                return RGBA{hidden, static_cast<unsigned char>(255 - hidden), hidden, 0};
+            }
+            return RGBA{static_cast<unsigned char>(x * 8), static_cast<unsigned char>(y * 16), 128, static_cast<unsigned char>(1 + (x * 7 + y * 13) % 255)};
+        };
+    };
+    const fs::path black = write_png("alpha_black.png", W, H, image_with(0));
+    const fs::path white = write_png("alpha_white.png", W, H, image_with(255));
+
+    const std::vector<std::pair<std::string, std::function<void(Dither&)>>> ops = {
+        {"reduce", [](Dither& d) { d.reduce("EUCLIDEAN_DISTANCE", "SLSO8", false); }},
+        {"error_diffusion", [](Dither& d) { d.error_diffusion("FLOYD_STEINBERG", "SERPENTINE", "EUCLIDEAN_DISTANCE", "SLSO8", true); }},
+        {"ordered", [](Dither& d) { d.ordered("BAYER_4X4", "EUCLIDEAN_DISTANCE", "SLSO8", false); }},
+        {"temporal", [](Dither& d) { d.temporal("RANDOM", 3, "EUCLIDEAN_DISTANCE", "SLSO8", false); }},
+    };
+
+    for(const auto& [label, op] : ops)
+    {
+        Dither b = load(black);
+        Dither w = load(white);
+        op(b);
+        op(w);
+        int transparent_changed = 0;
+        int alpha_changed = 0;
+        int influenced = 0;
+
+        for(std::size_t frame = 0; frame < b.image.get_frames(); frame++)
+        {
+            for(unsigned y = 0; y < H; y++)
+            {
+                for(unsigned x = 0; x < W; x++)
+                {
+                    const RGBA e = image_with(0)(x, y);
+                    const Color c = b.image.get_pixel(x, y, frame);
+
+                    if(x < W / 2)
+                    {
+                        transparent_changed += (same_rgb(c, Color(e.r, e.g, e.b)) && c.a == 0) ? 0 : 1;
+                    }
+                    else
+                    {
+                        alpha_changed += c.a == e.a ? 0 : 1;
+                        // what is hidden under the transparent half must not change the visible half
+                        // (temporal is random per frame, so only the deterministic operations are compared)
+                        if(label != "temporal")
+                        {
+                            const Color o = w.image.get_pixel(x, y, frame);
+                            influenced += (same_rgb(c, o) && c.a == o.a) ? 0 : 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        CHECK_MSG(transparent_changed == 0, label + ": " + std::to_string(transparent_changed) + " transparent pixels were changed");
+        CHECK_MSG(alpha_changed == 0, label + ": " + std::to_string(alpha_changed) + " pixels lost their alpha");
+        CHECK_MSG(influenced == 0, label + ": transparent pixels changed " + std::to_string(influenced) + " visible pixels");
+    }
 }
 
 // [200, 100] and [100, 200] are the same data in a different order, so they must

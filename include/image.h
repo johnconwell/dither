@@ -23,10 +23,10 @@ public:
     void set_pixel(Color color, unsigned int x, unsigned int y, std::size_t frame = 0);
     std::size_t get_width();
     std::size_t get_height();
+    // decoding exponent from a gAMA chunk, or 0 for the standard sRGB curve (see Transfer)
     double get_gamma();
     std::size_t get_frames();
     void set_frames(std::size_t new_frames);
-    std::vector<Color> get_color_range(bool gamma_correction);
 
     std::size_t load(const char* file_name);
     std::size_t save(const char* file_name);

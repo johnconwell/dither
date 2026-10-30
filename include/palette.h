@@ -34,25 +34,51 @@ public:
     Palette() = delete;
     Palette(std::string name);
 
-    std::size_t size();
-    Color get_color_at(std::size_t index);
-    void sort();
-    Color nearest(Color input, std::string mapping_method, std::vector<Color> input_range, std::vector<Color> output_range, std::vector<double> slope);
-    int nearest_index_lighter(Color input);
-    int nearest_index_darker(Color input);
-    Color pitch_vector();
-    std::vector<Color> get_color_range();
+    // UNIFORM_HISTOGRAM: per-channel linear map that stretches the image's range onto the palette's
+    // range, in working space. A channel that is flat in the image has slope UNMAPPED (NaN) and is
+    // passed through unchanged (B4).
+    struct RangeMap
+    {
+        RGBf input_min;
+        RGBf output_min;
+        RGBf slope;
 
-    // UNIFORM_HISTOGRAM: per-channel slope that stretches image_range onto palette_range;
-    // a channel that is flat in the image gets UNMAPPED and is passed through unchanged
-    static inline const double UNMAPPED = std::numeric_limits<double>::quiet_NaN();
-    static std::vector<double> range_slope(const std::vector<Color>& image_range, const std::vector<Color>& palette_range);
+        RGBf apply(const RGBf& c) const;
+    };
+
+    static inline const float UNMAPPED = std::numeric_limits<float>::quiet_NaN();
+
+    std::size_t size() const;
+    // original sRGB colour, which is what gets written to the output image
+    Color get_color_at(std::size_t index) const;
+    // the same colour in working space (linear light when gamma correction is on)
+    const RGBf& get_working_at(std::size_t index) const;
+
+    // Choose the working space. nullptr = sRGB values as float; otherwise the palette is
+    // linearised once with this transfer function, so pixels and palette are compared in
+    // the same space (B3). Call before sort() and the searches below.
+    void set_working_space(const Transfer* transfer);
+
+    // sort darkest to lightest by working-space HSL lightness
+    void sort();
+
+    // index of the nearest palette colour to a working-space value
+    std::size_t nearest_index(const RGBf& input, const std::string& mapping_method, const RangeMap* range_map = nullptr) const;
+    int nearest_index_lighter(const RGBf& input) const;
+    int nearest_index_darker(const RGBf& input) const;
+
+    // average absolute step between neighbouring colours (palette must be sorted), in working space
+    RGBf pitch_vector() const;
+
+    // UNIFORM_HISTOGRAM map from an image's working-space range {min, max} onto this palette's range
+    RangeMap range_map(const RGBf& image_min, const RGBf& image_max) const;
 
     std::string to_string();
 
 private:
     std::string name;
     std::vector<Color> colors;
+    std::vector<RGBf> working;
 };
 
 

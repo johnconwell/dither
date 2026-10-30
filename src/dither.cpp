@@ -16,9 +16,105 @@ std::size_t Dither::save(const char* file_name)
     return image.save(file_name);
 }
 
+namespace
+{
+    // Phase 3 working buffer: every pixel of frame 0 as float, in sRGB or linear light, plus its
+    // alpha. All dither maths happens here; only the chosen palette colour's original sRGB value is
+    // written back to the image, so nothing is truncated to 8 bits along the way (B3, Q1, Q6).
+    struct Working
+    {
+        std::size_t width = 0;
+        std::size_t height = 0;
+        std::vector<RGBf> pixels;
+        std::vector<int> alpha;
+        // range over the non-transparent pixels, for UNIFORM_HISTOGRAM
+        RGBf min;
+        RGBf max;
+
+        std::size_t index(std::size_t x, std::size_t y) const { return y * width + x; }
+        // fully transparent pixels pass through unchanged, spread no error and receive none (D3)
+        bool transparent(std::size_t i) const { return alpha[i] == 0; }
+    };
+
+    Working make_working(Image& image, const Transfer* transfer)
+    {
+        Working w;
+        w.width = image.get_width();
+        w.height = image.get_height();
+        w.pixels.resize(w.width * w.height);
+        w.alpha.resize(w.width * w.height);
+
+        constexpr float INF = std::numeric_limits<float>::infinity();
+        w.min = RGBf(INF, INF, INF);
+        w.max = RGBf(-INF, -INF, -INF);
+
+        for(std::size_t y = 0; y < w.height; y++)
+        {
+            for(std::size_t x = 0; x < w.width; x++)
+            {
+                const Color color = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
+                const std::size_t i = w.index(x, y);
+                const RGBf value = transfer ? transfer->to_linear(color) : RGBf(color);
+                w.pixels[i] = value;
+                w.alpha[i] = color.a;
+
+                if(color.a != 0)
+                {
+                    w.min = RGBf(std::min(w.min.r, value.r), std::min(w.min.g, value.g), std::min(w.min.b, value.b));
+                    w.max = RGBf(std::max(w.max.r, value.r), std::max(w.max.g, value.g), std::max(w.max.b, value.b));
+                }
+            }
+        }
+
+        return w;
+    }
+
+    // the palette's original sRGB colour, with the source pixel's alpha kept (D3)
+    Color output_color(const Palette& palette, std::size_t index_palette, int alpha)
+    {
+        Color color = palette.get_color_at(index_palette);
+        color.a = alpha;
+        return color;
+    }
+
+    // Threshold matrix -> offsets centred on 0 in (-0.5, 0.5), using each value's mid-rank in the
+    // matrix: (number below + half the number equal) / count - 0.5. For the Bayer and blue-noise
+    // matrices (evenly spaced values k * 256 / N) this is exactly (k + 0.5) / N - 0.5, which removes
+    // the old "t - 127" bias (Q3); for the small white-noise matrices it also removes the bias of
+    // their uneven random values, so every matrix reproduces flat greys at the right coverage.
+    std::vector<std::vector<float>> centred_thresholds(const std::vector<std::vector<double>>& matrix)
+    {
+        std::vector<double> sorted;
+
+        for(const auto& row : matrix)
+        {
+            sorted.insert(sorted.end(), row.begin(), row.end());
+        }
+
+        std::sort(sorted.begin(), sorted.end());
+        const double count = static_cast<double>(sorted.size());
+        std::vector<std::vector<float>> offsets(matrix.size());
+
+        for(std::size_t y = 0; y < matrix.size(); y++)
+        {
+            for(const double t : matrix[y])
+            {
+                const auto range = std::equal_range(sorted.begin(), sorted.end(), t);
+                const double below = static_cast<double>(range.first - sorted.begin());
+                const double equal = static_cast<double>(range.second - range.first);
+                offsets[y].push_back(static_cast<float>((below + equal / 2.0) / count - 0.5));
+            }
+        }
+
+        return offsets;
+    }
+}
+
 void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction)
 {
     const Grayscale grayscale = Grayscale(name_grayscale_weights);
+    const std::vector<double>& weights = grayscale.weights;
+    const Transfer transfer(image.get_gamma());
     const std::size_t height = image.get_height();
     const std::size_t width = image.get_width();
 
@@ -26,21 +122,22 @@ void Dither::grayscale(std::string name_grayscale_weights, bool gamma_correction
     {
         for(std::size_t x = 0; x < width; x++)
         {
-            Color color = image.get_pixel(x, y);
+            Color color = image.get_pixel(static_cast<unsigned int>(x), static_cast<unsigned int>(y));
 
             if(gamma_correction)
             {
-                color.to_linear(image.get_gamma());
+                // weight the channels in linear light and round once, back in sRGB
+                const RGBf linear = transfer.to_linear(color);
+                const double value = linear.r * weights[Color::INDEX_R] + linear.g * weights[Color::INDEX_G] + linear.b * weights[Color::INDEX_B];
+                const int encoded = transfer.to_encoded(static_cast<float>(value));
+                color = Color(encoded, encoded, encoded, color.a);
             }
-
-            color.to_grayscale(grayscale.weights);
-
-            if(gamma_correction)
+            else
             {
-                color.to_srgb(image.get_gamma());
+                color.to_grayscale(weights);
             }
 
-            image.set_pixel(color, x, y);
+            image.set_pixel(color, static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
@@ -110,34 +207,26 @@ void Dither::convolve(std::string name_kernel)
 
 void Dither::reduce(std::string name_mapping_method, std::string name_palette, bool gamma_correction)
 {
+    const Transfer transfer(image.get_gamma());
+    const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
-    const std::size_t image_height = image.get_height();
-    const std::size_t image_width = image.get_width();
-    std::vector<Color> color_range_image;
-    std::vector<Color> color_range_palette;
-    std::vector<double> slope;
+    palette.set_working_space(working_space);
+    const Working w = make_working(image, working_space);
+    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
 
-    if(name_mapping_method == "UNIFORM_HISTOGRAM")
+    for(std::size_t y = 0; y < w.height; y++)
     {
-        color_range_image = image.get_color_range(gamma_correction);
-        color_range_palette = palette.get_color_range();
-        slope = Palette::range_slope(color_range_image, color_range_palette);
-    }
-
-    for(std::size_t y = 0; y < image_height; y++)
-    {
-        for(std::size_t x = 0; x < image_width; x++)
+        for(std::size_t x = 0; x < w.width; x++)
         {
-            Color color = image.get_pixel(x, y);
+            const std::size_t i = w.index(x, y);
 
-            if(gamma_correction)
+            if(w.transparent(i))
             {
-                color.to_linear(image.get_gamma());
+                continue;
             }
 
-            Color palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
-
-            image.set_pixel(palette_nearest, x, y);
+            const std::size_t nearest = palette.nearest_index(w.pixels[i], name_mapping_method, &range_map);
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
@@ -147,111 +236,72 @@ void Dither::reduce(std::string name_mapping_method, std::string name_palette, b
 void Dither::error_diffusion(std::string name_algorithm, std::string scan_pattern, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
 {
     ErrorDiffusion error_diffusion = ErrorDiffusion(name_algorithm);
+    const Transfer transfer(image.get_gamma());
+    const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
-    const std::size_t image_height = image.get_height();
-    const std::size_t image_width = image.get_width();
-    std::vector<std::vector<std::vector<int>>> error_matrix(image_height, std::vector<std::vector<int>>(image_width, std::vector<int>(Color::NUM_BYTES - 1, 0)));
-    std::vector<Color> color_range_image;
-    std::vector<Color> color_range_palette;
-    std::vector<double> slope;
+    palette.set_working_space(working_space);
+    // the working buffer doubles as the error buffer: diffused error is added straight onto it, in float (Q1)
+    Working w = make_working(image, working_space);
+    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
 
-    if(name_mapping_method == "UNIFORM_HISTOGRAM")
+    struct Tap
     {
-        color_range_image = image.get_color_range(gamma_correction);
-        color_range_palette = palette.get_color_range();
-        slope = Palette::range_slope(color_range_image, color_range_palette);
+        int dx;
+        int dy;
+        float scalar;
+    };
+    std::vector<Tap> taps;
+
+    for(const auto& coordinate : error_diffusion.coordinates)
+    {
+        taps.push_back({coordinate.first, coordinate.second, static_cast<float>(error_diffusion.scalars.at(coordinate))});
     }
 
-    for(std::size_t y = 0; y < image_height; y++)
+    const int image_width = static_cast<int>(w.width);
+    const int image_height = static_cast<int>(w.height);
+    const bool serpentine = scan_pattern == "SERPENTINE";
+
+    for(int y = 0; y < image_height; y++)
     {
-        // alternate direction on odd rows
-        if(scan_pattern == "SERPENTINE" && y % 2 == 1)
+        // serpentine: odd rows run right to left, and the kernel is mirrored with them
+        const int direction = (serpentine && y % 2 == 1) ? -1 : 1;
+        const int x_start = direction > 0 ? 0 : image_width - 1;
+
+        for(int step = 0; step < image_width; step++)
         {
-            for(int x = image_width - 1; x >= 0; x--)
+            const int x = x_start + direction * step;
+            const std::size_t i = w.index(static_cast<std::size_t>(x), static_cast<std::size_t>(y));
+
+            if(w.transparent(i))
             {
-                // set current pixel to nearest palette color (accounting for accumulated error)
-                Color color = image.get_pixel(x, y);
-
-                if(gamma_correction)
-                {
-                    color.to_linear(image.get_gamma());
-                }
-                
-                color.r += error_matrix[y][x][Color::INDEX_R];
-                color.g += error_matrix[y][x][Color::INDEX_G];
-                color.b += error_matrix[y][x][Color::INDEX_B];
-
-                color.r = std::clamp(color.r, 0, static_cast<int>(Color::CHANNEL_MAX));
-                color.g = std::clamp(color.g, 0, static_cast<int>(Color::CHANNEL_MAX));
-                color.b = std::clamp(color.b, 0, static_cast<int>(Color::CHANNEL_MAX));
-
-                Color palette_nearest;
-
-                palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
-
-                const std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
-
-                for(std::size_t index_error = 0; index_error < error_diffusion.coordinates.size(); index_error++)
-                {
-                    const std::size_t new_x = x - error_diffusion.coordinates[index_error].first; // flip x when we are going backwards
-                    const std::size_t new_y = y + error_diffusion.coordinates[index_error].second;
-
-                    if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
-                    {
-                        continue;
-                    }
-
-                    error_matrix[new_y][new_x][Color::INDEX_R] += static_cast<int>(current_pixel_error[Color::INDEX_R] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                    error_matrix[new_y][new_x][Color::INDEX_G] += static_cast<int>(current_pixel_error[Color::INDEX_G] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                    error_matrix[new_y][new_x][Color::INDEX_B] += static_cast<int>(current_pixel_error[Color::INDEX_B] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                }
-
-                image.set_pixel(palette_nearest, x, y);
+                continue;
             }
-        }
-        else
-        {
-            for(std::size_t x = 0; x < image_width; x++)
+
+            // set current pixel to nearest palette color (accounting for accumulated error)
+            const RGBf value = w.pixels[i].clamped();
+            const std::size_t nearest = palette.nearest_index(value, name_mapping_method, &range_map);
+            const RGBf error = value - palette.get_working_at(nearest);
+
+            for(const Tap& tap : taps)
             {
-                // set current pixel to nearest palette color (accounting for accumulated error)
-                Color color = image.get_pixel(x, y);
+                // signed coordinates, so the bounds check is real (Q12)
+                const int new_x = x + direction * tap.dx;
+                const int new_y = y + tap.dy;
 
-                if(gamma_correction)
+                if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
                 {
-                    color.to_linear(image.get_gamma());
-                }
-                
-                color.r += error_matrix[y][x][Color::INDEX_R];
-                color.g += error_matrix[y][x][Color::INDEX_G];
-                color.b += error_matrix[y][x][Color::INDEX_B];
-
-                color.r = std::clamp(color.r, 0, static_cast<int>(Color::CHANNEL_MAX));
-                color.g = std::clamp(color.g, 0, static_cast<int>(Color::CHANNEL_MAX));
-                color.b = std::clamp(color.b, 0, static_cast<int>(Color::CHANNEL_MAX));
-
-                Color palette_nearest;
-
-                palette_nearest = palette.nearest(color, name_mapping_method, color_range_image, color_range_palette, slope);
-
-                const std::vector<int> current_pixel_error = {color.r - palette_nearest.r, color.g - palette_nearest.g, color.b - palette_nearest.b};
-
-                for(std::size_t index_error = 0; index_error < error_diffusion.coordinates.size(); index_error++)
-                {
-                    const std::size_t new_x = x + error_diffusion.coordinates[index_error].first;
-                    const std::size_t new_y = y + error_diffusion.coordinates[index_error].second;
-
-                    if(new_x < 0 || new_x >= image_width || new_y < 0 || new_y >= image_height)
-                    {
-                        continue;
-                    }
-
-                    error_matrix[new_y][new_x][Color::INDEX_R] += static_cast<int>(current_pixel_error[Color::INDEX_R] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                    error_matrix[new_y][new_x][Color::INDEX_G] += static_cast<int>(current_pixel_error[Color::INDEX_G] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
-                    error_matrix[new_y][new_x][Color::INDEX_B] += static_cast<int>(current_pixel_error[Color::INDEX_B] * error_diffusion.scalars[error_diffusion.coordinates[index_error]]);
+                    continue;
                 }
 
-                image.set_pixel(palette_nearest, x, y);
+                const std::size_t j = w.index(static_cast<std::size_t>(new_x), static_cast<std::size_t>(new_y));
+
+                if(!w.transparent(j))
+                {
+                    w.pixels[j] += error * tap.scalar;
+                }
             }
+
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
@@ -260,55 +310,38 @@ void Dither::error_diffusion(std::string name_algorithm, std::string scan_patter
 
 void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
 {
-    Ordered ordered = Ordered(name_threshold_matrix);
+    const Ordered ordered = Ordered(name_threshold_matrix);
+    const Transfer transfer(image.get_gamma());
+    const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
-    const std::size_t image_height = image.get_height();
-    const std::size_t image_width = image.get_width();
-    const std::size_t threshold_matrix_height = ordered.threshold_matrix.size();
-    const std::size_t threshold_matrix_width = ordered.threshold_matrix[0].size();
-
+    palette.set_working_space(working_space);
     palette.sort();
 
-    const Color palette_pitch_vector = palette.pitch_vector();
-    const int color_channel_max_half = Color::CHANNEL_MAX / 2;
-    std::vector<Color> color_range_image;
-    std::vector<Color> color_range_palette;
-    std::vector<double> slope;
+    const Working w = make_working(image, working_space);
+    const Palette::RangeMap range_map = palette.range_map(w.min, w.max);
+    const std::vector<std::vector<float>> thresholds = centred_thresholds(ordered.threshold_matrix);
+    const std::size_t threshold_matrix_height = thresholds.size();
+    const std::size_t threshold_matrix_width = thresholds[0].size();
+    // the average step between neighbouring palette colours, in working space
+    const RGBf palette_pitch_vector = palette.pitch_vector();
 
-    if(name_mapping_method == "UNIFORM_HISTOGRAM")
+    for(std::size_t y = 0; y < w.height; y++)
     {
-        color_range_image = image.get_color_range(gamma_correction);
-        color_range_palette = palette.get_color_range();
-        slope = Palette::range_slope(color_range_image, color_range_palette);
-    }
-
-    for(std::size_t y = 0; y < image_height; y++)
-    {
-        for(std::size_t x = 0; x < image_width; x++)
+        for(std::size_t x = 0; x < w.width; x++)
         {
-            Color color = image.get_pixel(x, y);
+            const std::size_t i = w.index(x, y);
 
-            if(gamma_correction)
+            if(w.transparent(i))
             {
-                color.to_linear(image.get_gamma());
+                continue;
             }
-            
-            const int threshold_value = ordered.threshold_matrix[y % threshold_matrix_height][x % threshold_matrix_width];
-            // normalize the threshold value by subtracting half the color channel range (normalized values should range from -127 to 128)
-            const int threshold_value_scaled = threshold_value - color_channel_max_half;
-            // create a color offset at each position that is the average spread in the color space (palette_pitch_vector / color_channel_max) multiplied by the normalized threshold
-            // keep this arithmetic signed: Color::CHANNEL_MAX is a size_t, and mixing it with a negative
-            // threshold_value_scaled would convert the product to unsigned and wrap around (B1)
-            constexpr int CHANNEL_MAX = static_cast<int>(Color::CHANNEL_MAX);
-            const Color threshold_color_offset = Color(
-                threshold_value_scaled * palette_pitch_vector.r / CHANNEL_MAX,
-                threshold_value_scaled * palette_pitch_vector.g / CHANNEL_MAX,
-                threshold_value_scaled * palette_pitch_vector.b / CHANNEL_MAX,
-                CHANNEL_MAX);
 
-            const Color palette_nearest = palette.nearest(color.add(threshold_color_offset), name_mapping_method, color_range_image, color_range_palette, slope);
-            
-            image.set_pixel(palette_nearest, x, y);
+            // offset each pixel by up to half a palette step either way, following the centred threshold
+            const float threshold = thresholds[y % threshold_matrix_height][x % threshold_matrix_width];
+            const RGBf value = w.pixels[i] + palette_pitch_vector * threshold;
+            const std::size_t nearest = palette.nearest_index(value, name_mapping_method, &range_map);
+
+            image.set_pixel(output_color(palette, nearest, w.alpha[i]), static_cast<unsigned int>(x), static_cast<unsigned int>(y));
         }
     }
 
@@ -317,73 +350,93 @@ void Dither::ordered(std::string name_threshold_matrix, std::string name_mapping
 
 void Dither::temporal(std::string name_temporal_method, std::size_t frames, std::string name_mapping_method, std::string name_palette, bool gamma_correction)
 {
+    const Transfer transfer(image.get_gamma());
+    const Transfer* working_space = gamma_correction ? &transfer : nullptr;
     Palette palette = Palette(name_palette);
+    palette.set_working_space(working_space);
+    palette.sort();
+
     std::random_device rd;
     std::mt19937 mt(rd());
     std::uniform_real_distribution<> dis(0.0, 1.0);
 
-    palette.sort();
+    const Working w = make_working(image, working_space);
     image.set_frames(frames);
-    
-    const std::size_t image_height = image.get_height();
-    const std::size_t image_width = image.get_width();
     const std::size_t image_frames = image.get_frames();
+    const std::size_t palette_size = palette.size();
 
-    if(name_temporal_method == "PWM")
-    {
-        for(std::size_t y = 0; y < image_height; y++)
+    auto distance = [&](const RGBf& a, const RGBf& b) {
+        if(name_mapping_method == "EUCLIDEAN_DISTANCE")
         {
-            for(std::size_t x = 0; x < image_width; x++)
-            {
-                // calculate the pixel's similarity to the two nearest colors in the palette
-                Color color = image.get_pixel(x, y);
+            return a.distance_euclidean(b);
+        }
 
-                if(gamma_correction)
+        if(name_mapping_method == "MANHATTAN_DISTANCE")
+        {
+            return a.distance_manhattan(b);
+        }
+
+        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
+        std::exit(EXIT_FAILURE);
+    };
+
+    if(name_temporal_method != "PWM" && name_temporal_method != "RANDOM")
+    {
+        std::cerr << "Error: Invalid temporal dithering method: " << name_temporal_method << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
+    std::vector<double> weights;
+
+    for(std::size_t y = 0; y < w.height; y++)
+    {
+        for(std::size_t x = 0; x < w.width; x++)
+        {
+            const std::size_t i = w.index(x, y);
+            const unsigned int ux = static_cast<unsigned int>(x);
+            const unsigned int uy = static_cast<unsigned int>(y);
+
+            // transparent pixels are copied unchanged into every frame
+            if(w.transparent(i))
+            {
+                const Color original = image.get_pixel(ux, uy, 0);
+
+                for(std::size_t index_frame = 1; index_frame < image_frames; index_frame++)
                 {
-                    color.to_linear(image.get_gamma());
+                    image.set_pixel(original, ux, uy, index_frame);
                 }
 
+                continue;
+            }
+
+            const RGBf& color = w.pixels[i];
+
+            if(name_temporal_method == "PWM")
+            {
+                // modulate between the nearest darker and lighter palette colours
                 const int index_darker = palette.nearest_index_darker(color);
                 const int index_lighter = palette.nearest_index_lighter(color);
-                Color palette_color_darker;
-                Color palette_color_lighter;
+                std::size_t palette_index_darker = 0;
+                std::size_t palette_index_lighter = palette_size - 1;
                 double duty_cycle = 0.0; // the proportion of the time that the pixel is set to nearest lighter palette color
 
                 // no darker colors on the palette, so set duty cycle to 0%
                 if(index_darker < 0)
                 {
-                    palette_color_darker = palette.get_color_at(0);
                     duty_cycle = 0.0;
                 }
-                // no lighter colors on th epalette, so set duty cycle to 100%
+                // no lighter colors on the palette, so set duty cycle to 100%
                 else if(index_lighter < 0)
                 {
-                    palette_color_lighter = palette.get_color_at(palette.size() - 1);
                     duty_cycle = 1.0;
                 }
                 else
                 {
-                    palette_color_darker = palette.get_color_at(index_darker);
-                    palette_color_lighter = palette.get_color_at(index_lighter);
-                    double distance_darker = 0.0;
-                    double distance_lighter = 0.0;
+                    palette_index_darker = static_cast<std::size_t>(index_darker);
+                    palette_index_lighter = static_cast<std::size_t>(index_lighter);
+                    const double distance_darker = distance(color, palette.get_working_at(palette_index_darker));
+                    const double distance_lighter = distance(color, palette.get_working_at(palette_index_lighter));
 
-                    if(name_mapping_method == "EUCLIDEAN_DISTANCE")
-                    {
-                        distance_darker = color.distance_euclidean(palette_color_darker);
-                        distance_lighter = color.distance_euclidean(palette_color_lighter);
-                    }
-                    else if(name_mapping_method == "MANHATTAN_DISTANCE")
-                    {
-                        distance_darker = color.distance_manhattan(palette_color_darker);
-                        distance_lighter = color.distance_manhattan(palette_color_lighter);
-                    }
-                    else
-                    {
-                        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
-                        std::exit(EXIT_FAILURE);
-                    }
-                    
                     // larger dark distance -> larger light time duty cycle
                     const double distance_total = distance_darker + distance_lighter;
                     duty_cycle = distance_total > 0.0 ? distance_darker / distance_total : 0.0;
@@ -391,59 +444,22 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
 
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
                 {
-                    if(dis(mt) < duty_cycle)
-                    {
-                        image.set_pixel(palette_color_lighter, x, y, index_frame);
-                    }
-                    else
-                    {
-                        image.set_pixel(palette_color_darker, x, y, index_frame);
-                    }
+                    const std::size_t chosen = dis(mt) < duty_cycle ? palette_index_lighter : palette_index_darker;
+                    image.set_pixel(output_color(palette, chosen, w.alpha[i]), ux, uy, index_frame);
                 }
             }
-        }
-    }
-    else if(name_temporal_method == "RANDOM")
-    {
-        std::vector<double> weights;
-        std::size_t palette_size = palette.size();
-
-        for(std::size_t y = 0; y < image_height; y++)
-        {
-            for(std::size_t x = 0; x < image_width; x++)
+            else
             {
-                // calculate the pixel's similarity to each color in the palette
-                Color color = image.get_pixel(x, y);
-                weights.resize(0);
-
-                if(gamma_correction)
-                {
-                    color.to_linear(image.get_gamma());
-                }
-
+                // RANDOM: pick a palette colour each frame with probability proportional to 1 / distance
+                weights.assign(palette_size, 0.0);
                 bool exact_match = false;
 
                 for(std::size_t index_palette = 0; index_palette < palette_size; index_palette++)
                 {
-                    double distance;
+                    const double d = distance(color, palette.get_working_at(index_palette));
 
-                    if(name_mapping_method == "EUCLIDEAN_DISTANCE")
-                    {
-                        distance = color.distance_euclidean(palette.get_color_at(index_palette));
-                    }
-                    else if(name_mapping_method == "MANHATTAN_DISTANCE")
-                    {
-                        distance = color.distance_manhattan(palette.get_color_at(index_palette));
-                    }
-                    else
-                    {
-                        std::cerr << "Error: Invalid mapping method for temporal dithering - " << name_mapping_method << std::endl;
-                        std::exit(EXIT_FAILURE);
-                    }
-
-                    // weights are 1 / distance, so a pixel that equals a palette colour would get an infinite weight;
-                    // give that colour 100% probability instead
-                    if(distance <= 0.0)
+                    // a pixel that equals a palette colour would get an infinite weight; give that colour 100% instead
+                    if(d <= 0.0)
                     {
                         if(!exact_match)
                         {
@@ -451,28 +467,22 @@ void Dither::temporal(std::string name_temporal_method, std::size_t frames, std:
                             exact_match = true;
                         }
 
-                        weights.push_back(1.0);
+                        weights[index_palette] = 1.0;
                     }
-                    else
+                    else if(!exact_match)
                     {
-                        weights.push_back(exact_match ? 0.0 : 1.0 / distance);
+                        weights[index_palette] = 1.0 / d;
                     }
                 }
 
-                std::discrete_distribution<> dis_disc(weights.begin(), weights.end());
+                std::discrete_distribution<std::size_t> dis_disc(weights.begin(), weights.end());
 
                 for(std::size_t index_frame = 0; index_frame < image_frames; index_frame++)
                 {
-                    image.set_pixel(palette.get_color_at(dis_disc(mt)), x, y, index_frame);
+                    image.set_pixel(output_color(palette, dis_disc(mt), w.alpha[i]), ux, uy, index_frame);
                 }
-                
             }
         }
-    }
-    else
-    {
-        std::cerr << "Error: Invalid temporal dithering method: " << name_temporal_method << std::endl;
-        std::exit(EXIT_FAILURE);
     }
 
     return;

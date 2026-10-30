@@ -102,31 +102,6 @@ void Image::set_frames(std::size_t new_frames)
     return;
 }
 
-std::vector<Color> Image::get_color_range(bool gamma_correction)
-{
-    std::vector<Color> color_range = {
-        Color(Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX, Color::CHANNEL_MAX),
-        Color(0, 0, 0, Color::CHANNEL_MAX)
-    };
-
-    for(std::size_t y = 0; y < height; y++)
-    {
-        for(std::size_t x = 0; x < width; x++)
-        {
-            Color color = get_pixel(x, y);
-
-            if(gamma_correction)
-            {
-                color.to_linear(gamma);
-            }
-
-            color.expand_range(color_range);
-        }
-    }
-
-    return color_range;
-}
-
 std::size_t Image::load(const char* file_name)
 {
     reset();
@@ -155,13 +130,15 @@ std::size_t Image::load(const char* file_name)
         return error;
     }
 
-    if(state.info_png.gama_defined)
+    // An sRGB chunk, or no colour information at all, means the standard sRGB curve (gamma = 0).
+    // Only a gAMA chunk without an sRGB chunk selects a pure power curve with the file's exponent.
+    if(state.info_png.gama_defined && !state.info_png.srgb_defined && state.info_png.gama_gamma > 0)
     {
         gamma = 100000.0 / static_cast<double>(state.info_png.gama_gamma);
     }
     else
     {
-        gamma = 2.2;
+        gamma = 0.0;
     }
 
     return error;

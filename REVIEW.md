@@ -2,7 +2,7 @@
 
 **Scope:** every first-party source file (`src/`, `include/` apart from the vendored lodepng, cxxopts and gif-h), the `Makefile`, `run.bat`, the `data/` CSVs and `README.md` (taken as the spec).
 **Method:** I read all the code, then built the project (GCC 13, `-std=c++23`) and ran targeted tests against `input/boat.png` and small synthetic images to confirm each bug below. A finding marked **Verified** was reproduced by running the program. A finding marked *By inspection* comes from reading the code only.
-**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the uncommitted ROADMAP Phase 0 work (build fixes and a test suite). See §0 for what changed since the first review.
+**Revision:** updated 30 Oct 2026 against `main` at `2414105` (tag `v1.0.0`), plus the uncommitted ROADMAP Phase 0–3 work. See §0 for what changed since the first review.
 
 ---
 
@@ -36,6 +36,19 @@
 | `convolve_identity` is now a `TEST`; new `convolve_blur_solid`, `convolve_is_true_convolution` and `convolve_keeps_alpha_and_rounds` | `make test`: 11 pass, 1 expected failure (B3). |
 | `-Wtype-limits` warnings from the old padding loops are gone | 52 first-party warnings on a clean build, down from 64. |
 
+### 0.4 ROADMAP Phase 3 (30 Oct 2026, not yet committed)
+
+| Change | Effect on this review |
+|---|---|
+| Float working buffer (`RGBf`) for reduce, error diffusion, ordered and temporal; only the chosen palette colour's original sRGB value is written out | **B3 resolved**, with **Q1** (error carried in float) and **Q6** (distances in `double`) on every dither path. §2.3 point 5 resolved. |
+| New `Transfer`: standard sRGB curve (÷255, exponent 2.4); `gAMA` used as a pure power curve only without an `sRGB` chunk; palette linearised once | `-a` now gives a white fraction of 0.275 (FS) / 0.273 (`BAYER_8X8`) on `boat.png`, against the 0.273 target. All 256 levels round-trip. `-g BT709 -a` leaves a grey ramp unchanged and keeps ≥ 250 levels of a colour gradient (190 before). |
+| Thresholds replaced by their centred mid-rank in the matrix | **Q3 resolved**, and the small white-noise matrices are no longer biased either. |
+| Transparent pixels pass through, spread and receive no error; alpha kept | **Q2 resolved** for every operation (decision D3). |
+| Raster and serpentine loops merged with signed coordinates | **Q12 resolved**; the raster/serpentine part of §2.3 point 6 is done. |
+| Removed `Color::to_linear`/`to_srgb`, `Image::get_color_range`, `Palette::get_color_range`, `Palette::range_slope` | The `get_color_range` duplication in §2.3 point 6 is gone. |
+| `gamma_linear_coverage` is now a `TEST`; six new tests (`transfer_round_trip`, `png_gamma_chunks`, `grayscale_linear_levels`, `ordered_all_matrices_coverage`, `error_diffusion_keeps_small_error`, `alpha_preserved`) | `make test`: 18 pass, 0 expected failures, 0.4 s. Each new test fails on the Phase 2 code. |
+| Clean build | 8 first-party warnings, down from 52. |
+
 ---
 
 ## 1. Executive summary
@@ -47,8 +60,8 @@ There are, however, several correctness bugs that change the output images. All 
 | # | Severity | Finding |
 |---|---|---|
 | B1 | **Critical** | **Ordered dithering is broken for every threshold value below 127.** An `int × size_t` expression underflows, so about half the threshold cells always map to the darkest palette colour. Every `-d` output so far has this defect, including the README example images that have since been removed. |
-| B2 | **High** | **Convolution shifts the image** right and down by half the kernel size and leaves black borders on the top and left edges. Edge padding is never written. |
-| B3 | **High** | **Gamma correction (`-a`) darkens dithered output heavily.** Pixels are linearised but palette colours are not. There is also 8-bit truncation in linear space. |
+| B2 | **High** ✅ | **Convolution shifts the image** right and down by half the kernel size and leaves black borders on the top and left edges. Edge padding is never written. |
+| B3 | **High** ✅ | **Gamma correction (`-a`) darkens dithered output heavily.** *(Resolved in Phase 3.)* Pixels are linearised but palette colours are not. There is also 8-bit truncation in linear space. |
 | B4 | **High** | **`UNIFORM_HISTOGRAM` is wrong in three ways:** it uses the red slope for all channels, it computes the colour range incorrectly, and it divides by zero when a channel is flat. |
 | B5 | Medium | **`WHITE_NOISE_64X64` cannot be used.** The table key is misspelled `WHITE_NOISE_64X46`. |
 | B6 | Medium | **Several inputs crash the program or fail silently:** a non-numeric frame count, an empty palette, an unknown output extension, 0 frames, and invalid temporal or scan options. |
@@ -93,7 +106,7 @@ main.cpp
 2. **The CLI model has one shared slot for the mapping method and palette.** `-r`, `-e`, `-d` and `-t` all write into the same `mapping_method` and `palette` fields (`cli.cpp:107-108, 124-125, 140-141, 157-158`). If you combine operations, the last flag silently wins for all of them. The README says "any number of optional flags" but never says how combinations behave.
 3. **Lookup tables are rebuilt on every construction.** `PRESET_PALETTES`, `KERNELS`, `METHODS`, `COORDINATES`, `SCALARS` and `THRESHOLD_MATRIXES` are non-static `const` data members. Each `Ordered` object therefore rebuilds an `unordered_map` holding all 20 matrices, including two 256×256 ones. Putting ~600 KB of numbers in `ordered.h` also makes compiles slow: `dither.o` is 3 MB. These tables should be `static inline const` data, ideally in a `.cpp` file, or loaded from the CSVs that already exist in `data/threshold_matrixes/`.
 4. **Library code exits the process.** `std::exit(EXIT_FAILURE)` is called from constructors and from `Palette::nearest`. That makes the classes impossible to reuse or test. Returning errors, or throwing and catching in `main`, would be cleaner.
-5. **The colour pipeline is 8-bit integers throughout**, including linear-light values and diffused error. This causes avoidable precision loss (B3, Q3). A `float` working buffer is the usual approach.
+5. ✅ *(Resolved in Phase 3: dithering uses a float working buffer.)* **The colour pipeline is 8-bit integers throughout**, including linear-light values and diffused error. This causes avoidable precision loss (B3, Q3). A `float` working buffer is the usual approach.
 6. **Code is duplicated in several places:**
    - The `UNIFORM_HISTOGRAM` slope set-up is copied three times in `dither.cpp`.
    - The raster and serpentine loops are near-identical 40-line blocks.
@@ -138,7 +151,7 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 - The code computes correlation, not convolution: the kernel is never flipped. That makes no difference for the symmetric built-in kernels, but it mirrors asymmetric user kernels such as `emboss.csv`.
 - `static_cast<T>(sum)` truncates toward zero instead of rounding.
 
-### B3 — Gamma correction produces output that is too dark (High, **Verified**)
+### B3 — Gamma correction produces output that is too dark (High, **Verified**) — ✅ resolved in Phase 3
 `color.cpp:77-109`, `dither.cpp:163-168, 211-226, 333-348, 380-383`
 1. **Palette colours stay in sRGB.** In `reduce`, `error_diffusion`, `ordered` and `temporal`, the pixel is converted to linear and then compared against sRGB palette colours. The error is also computed against those sRGB values.
 2. **`to_linear` and `to_srgb` store linear values as 8-bit `int`.** sRGB values 0–10 all become 0, and only 190 of 256 levels survive a round trip. This is also why `-g BT709 -a` drops from 203 to 163 distinct grey levels.
@@ -199,12 +212,12 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 **Test:** `cli_rejects_bad_input` runs 13 of these inputs against the real binary. On Linux, two abort (exit 134), two segfault (139) and seven exit 0 when they should fail. Two cases already behave correctly: a 1-colour palette with `-d` gives a correct image, and a GIF written into a missing folder fails with an error. The `-r TWILIGHT5` garbage read did not reproduce on Linux, so it is checked only as "output is printable".
 
 ### Smaller correctness and quality issues
-- **Q1 — Error is truncated, not carried.** `static_cast<int>(error * scalar)` at `dither.cpp:240-242, 284-286` truncates toward zero, so small errors vanish. The effect is negligible with high-contrast palettes (measured within 0.2%), but it causes banding with close palettes. A float error buffer fixes it.
-- **Q2 — Alpha is discarded.** Every operation writes alpha = 255, and transparent pixels get dithered and pass error on to their neighbours. A fully transparent test image came out opaque. The README says nothing about alpha either way.
-- **Q3 — Bayer thresholds are biased.** Built-in values run `k·256/N²` (2×2 is {0, 64, 128, 192}). Subtracting 127 gives a mean offset of −31 for 2×2, which darkens results slightly. Centred thresholds `(k+0.5)·256/N² − 128` remove the bias.
+- ✅ *(Phase 3)* **Q1 — Error is truncated, not carried.** `static_cast<int>(error * scalar)` at `dither.cpp:240-242, 284-286` truncates toward zero, so small errors vanish. The effect is negligible with high-contrast palettes (measured within 0.2%), but it causes banding with close palettes. A float error buffer fixes it.
+- ✅ *(Phase 3, D3)* **Q2 — Alpha is discarded.** Every operation writes alpha = 255, and transparent pixels get dithered and pass error on to their neighbours. A fully transparent test image came out opaque. The README says nothing about alpha either way.
+- ✅ *(Phase 3: mid-rank centring, which also fixes the uneven small white-noise matrices)* **Q3 — Bayer thresholds are biased.** Built-in values run `k·256/N²` (2×2 is {0, 64, 128, 192}). Subtracting 127 gives a mean offset of −31 for 2×2, which darkens results slightly. Centred thresholds `(k+0.5)·256/N² − 128` remove the bias.
 - **Q4 — PWM is stochastic, not pulse-width modulation.** Each frame draws a random number against the duty cycle. With 4–8 frames the real proportion varies a lot from pixel to pixel, which gives flicker noise. A deterministic schedule (lighter for `round(duty·frames)` frames, phase-shifted per pixel by a blue-noise value) would match the name and look much smoother. PWM also picks its darker/lighter pair using HSL lightness only, so hue is ignored.
 - **Q5 — Per-pixel copies.** `Palette::nearest(Color, std::string, std::vector<Color>, std::vector<Color>, std::vector<double>)` takes everything by value, so each pixel copies a string and three vectors. `distance_euclidean_squared` also allocates its default weight vector on every call. Passing by `const&` and using `std::array` would fix this. Speed is fine at `-O1` (~0.14 s for 512×512). The old Makefile built at `-O0`; the Phase 0 Makefile uses `-O2`.
-- **Q6 — Weighted distance truncated.** `distance_euclidean_squared` returns `int` from a weighted `double` sum, which truncates. It also overflows for out-of-range inputs, and that overflow is what turns B1 into a silent wrong answer rather than a merely bad one.
+- ✅ *(Phase 3: dither paths use `RGBf` distances in `double`; the old `Color` functions remain but are unused there)* **Q6 — Weighted distance truncated.** `distance_euclidean_squared` returns `int` from a weighted `double` sum, which truncates. It also overflows for out-of-range inputs, and that overflow is what turns B1 into a silent wrong answer rather than a merely bad one.
 - **Q7 — Fragile includes.** `ordered.h` uses `std::ifstream`, `std::stringstream`, `std::filesystem` and `std::count_if` without including `<fstream>`, `<sstream>`, `<filesystem>` or `<algorithm>`. `convolve.h` is missing `<algorithm>`. It builds on your MinGW toolchain only through transitive includes. **On GCC 13/Linux it fails:** `'count_if' is not a member of 'std'`. ✅ **Resolved in Phase 0**: `ordered.h` and `convolve.h` now include `<algorithm>`, `<fstream>`, `<sstream>`, `<filesystem>` and `<iterator>`, and the project builds on GCC 13.
 - **Q8 — Reserved names.** Header guards such as `__CLI_H` use reserved identifiers. Prefer `DITHER_CLI_H` or `#pragma once`.
 - **Q9 — Wrong help text.** The help for `-g` says "Applies gamma correction the the input image" (`cli.cpp:41`). The `-a` text has the same "the the" typo.
@@ -216,7 +229,7 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
   - Running `-b` with no operation prints a time of about 400 ns. A message such as "no operations" would be clearer.
   - ~~The `#include <chrono>` comment still says `clock_t, clock()`, and `std::size_t` is used without `<cstddef>`.~~ ✅ Fixed in Phase 0.
   - The accessor methods could be `const`, and `benchmark.cpp` mixes tabs and spaces.
-- **Q12 — Error-diffusion bounds checks are dead code** (new in Phase 0, found by `-Wtype-limits`). At `dither.cpp:235` and `279`, `new_x` and `new_y` are `size_t`, so `new_x < 0` and `new_y < 0` can never be true. Today the result is still correct only because a negative offset wraps around to a huge value, which then fails the `>= image_width` / `>= image_height` test. It is fragile rather than wrong: use signed `int` coordinates when the raster and serpentine loops are merged (ROADMAP 4.4).
+- ✅ *(Phase 3: loops merged with signed coordinates)* **Q12 — Error-diffusion bounds checks are dead code** (new in Phase 0, found by `-Wtype-limits`). At `dither.cpp:235` and `279`, `new_x` and `new_y` are `size_t`, so `new_x < 0` and `new_y < 0` can never be true. Today the result is still correct only because a negative offset wraps around to a huge value, which then fails the `>= image_width` / `>= image_height` test. It is fragile rather than wrong: use signed `int` coordinates when the raster and serpentine loops are merged (ROADMAP 4.4).
 
 ---
 
@@ -234,7 +247,7 @@ threshold_value_scaled * palette_pitch_vector.r / Color::CHANNEL_MAX
 | S8 | `MANHATTAN_DISTANCE` "nearest palette color in Cartesian space" | The wording is misleading; Euclidean distance is Cartesian too. Better: "sum of absolute per-channel differences (L1)". |
 | S9 | `WHITE_NOISE_64X64` | Unreachable because of the misspelled key (B5). |
 | S10 | "an 8×8 bayer matrix contains every possible value (0-255)" | An 8×8 matrix has 64 values (0, 4, 8, …, 252). Only 16×16 has all 256. The sentence and its conclusion should be revised. |
-| S11 | `-a` "Applies gamma correction to the input image" | Applies only to grayscale, reduce, error diffusion, ordered and temporal; `-c` ignores it. It also behaves incorrectly (B3). The README should say what "gamma correction" means here: processing in linear light. |
+| S11 | `-a` "Applies gamma correction to the input image" | Applies only to grayscale, reduce, error diffusion, ordered and temporal; `-c` ignores it. ~~It also behaves incorrectly (B3).~~ Correct since Phase 3. The README should say what "gamma correction" means here: processing in linear light. |
 | S12 | Convolution, reduce and dither sections: "input file and output files must be .png" | Not validated. `.gif` output works for every operation, and other extensions fail silently with exit code 0 (B6). |
 | S13 | "Use `dither` followed by … any number of optional flags" | When operations are combined, they run in a fixed order and share one mapping method and palette (Architecture §2.3, point 2). This should be documented, or each operation should get its own arguments. |
 | S14 | Temporal section: "See Temporal Dithering Methods for available **threshold matrixes**" | Copy-paste wording. Also, the Temporal Dithering Methods table has no intro sentence, unlike the other tables. |
@@ -267,7 +280,7 @@ A step-by-step implementation plan is in **ROADMAP.md**.
 
 1. **B1** — one-line cast fix in `ordered`. *(Phase 0 — build and tests — is done.)*
 2. ~~**B2** — rewrite convolution with signed, clamped sampling; check it with an identity-kernel test.~~ ✅ done in Phase 2.
-3. **B3** — float linear pipeline, palette linearised once, standard sRGB transfer function.
+3. ~~**B3** — float linear pipeline, palette linearised once, standard sRGB transfer function.~~ ✅ done in Phase 3 (with Q1, Q2, Q3, Q6, Q12).
 4. **B5, B6** — fix the key typo; validate every enum-like argument and the frame count in `CLI::parse`; return non-zero for unknown output formats; reject empty palettes.
 5. **B4 / S5** — fix the slope and the min/max search, guard against division by zero, and decide whether to implement real histogram mapping or rename it (for example `RANGE_STRETCH`).
 6. **Docs** — S2–S4 and S10–S17; document what `--benchmark` measures; Q11 tidy-ups.

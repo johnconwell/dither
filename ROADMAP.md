@@ -20,7 +20,9 @@ Each task lists the files it touches, the approach, and a **Done when** check th
 | 1.1–1.4 Quick correctness wins | ✅ Done (30 Oct 2026) | `make test`: 7 pass, 2 expected failures (B2, B3). Verified on GCC 13 / Linux; not yet on MinGW. |
 | 1.5 Release v1.0.1 | Not started | Rebuild `bin/dither.exe`, tag, CHANGELOG. |
 | 2.1 Convolution rewrite | ✅ Done (30 Oct 2026) | `make test`: 11 pass, 1 expected failure (B3). Verified on GCC 13 / Linux; not yet on MinGW. |
-| 3–6 | Not started | |
+| 3.1–3.4 Colour pipeline, gamma, thresholds, alpha | ✅ Done (30 Oct 2026) | `make test`: 18 pass, 0 expected failures. Verified on GCC 13 / Linux; not yet on MinGW. |
+| 3.5 Release v1.1.0 | Not started | Regenerate the README examples into `docs/examples/`. |
+| 4–6 | Not started | Part of 4.4 (merged raster/serpentine loops, signed coordinates) landed early in Phase 3. |
 
 REVIEW.md §0.2 lists what Phase 0 changed in the findings; new finding Q12 (dead bounds checks) came out of it.
 
@@ -240,8 +242,43 @@ This is an arithmetic fix only. Phase 5 decides what the method should do.
 ### 3.4 Decide on alpha *(Q2)* — see open decision **D3**
 - Simplest option: pixels with alpha 0 pass through unchanged, spread no error and receive no error; alpha is kept on output.
 
+### Phase 3 as built (30 Oct 2026)
+- **3.1 Float working buffer (B3, Q1, Q6):**
+  - New `RGBf` in `color.h`: float channels on the 0–255 scale, with BT.709-weighted Euclidean, Manhattan and HSL-lightness helpers computed in `double`.
+  - Every quantising operation (`reduce`, `error_diffusion`, `ordered`, `temporal`) now builds one working buffer of frame 0 (sRGB as float, or linear light with `-a`), does all its maths there, and writes the chosen palette colour's **original sRGB** value back.
+  - Error diffusion adds error straight onto the float buffer, so small errors are carried instead of truncated (Q1). Distances are `double`, so the `int` overflow and truncation in Q6 can't happen on these paths.
+  - The raster and serpentine loops are merged into one loop with `direction = ±1` and signed `int` coordinates, so the bounds check is real (Q12). This was planned for 4.4.
+- **3.2 sRGB transfer and linear palette (B3):**
+  - New `Transfer` class: the standard sRGB curve (÷255, 0.04045 / 2.4, inverse 0.0031308 / 1/2.4) with a 256-entry forward lookup table, rounding on the way back.
+  - `Image::load` stores gamma = 0 (sRGB) unless the PNG has a `gAMA` chunk **and** no `sRGB` chunk; then the file's exponent is used as a pure power curve. The old default of 2.2 inside the sRGB formula is gone.
+  - `Palette::set_working_space()` linearises the palette once. Sorting, nearest-colour search, the PWM darker/lighter search, the ordered pitch vector and the `UNIFORM_HISTOGRAM` range all use the working copy.
+  - Grayscale with `-a` weights the channels in linear float and rounds once: a grey ramp is unchanged and a colour gradient keeps at least 250 grey levels (190 before). Without `-a` it is unchanged.
+  - Removed the broken `Color::to_linear` / `to_srgb`, `Image::get_color_range`, `Palette::get_color_range` and `Palette::range_slope`. `UNIFORM_HISTOGRAM` now uses `Palette::RangeMap`, built from the working buffer (flat channels still pass through as `UNMAPPED`).
+- **3.3 Centred thresholds (Q3) — changed from the plan:**
+  - Each threshold is replaced by its **mid-rank** in its matrix: `(values below + half the equal values) / count − 0.5`.
+  - For Bayer and blue-noise matrices (evenly spaced values) this is exactly `(k + 0.5)/N − 0.5`, as planned.
+  - *Why not the planned `(t + 0.5)/N_levels − 0.5`:* the small white-noise matrices have uneven random values (`WHITE_NOISE_2X2` is {73, 140, 161, 170}), so a value-based formula can't meet "passes for every built-in matrix". `WHITE_NOISE_2X2` gave 0% light at 25% grey. Mid-rank makes every matrix unbiased while leaving the evenly spaced ones exactly as planned.
+  - The offset is `threshold × pitch`, so each pixel moves up to half a palette step either way, in working space.
+- **3.4 Alpha (Q2, decision D3 taken as recommended):** fully transparent pixels pass through unchanged, spread no error and receive none; every other pixel keeps its alpha. For `-t`, transparent pixels are copied into every frame.
+- **Tests:** `gamma_linear_coverage` changed from `XFAIL` to `TEST` and now checks ordered dithering too. Six new tests, all of which fail on the Phase 2 code:
+  - `transfer_round_trip` — all 256 levels round-trip for sRGB, γ 2.2 and γ 1.8; reference values (sRGB 128 → 21.586% linear);
+  - `png_gamma_chunks` — no chunk / `gAMA` only / `gAMA` + `sRGB` give 0 / 2.2 / 0;
+  - `grayscale_linear_levels` — grey ramp unchanged, colour gradient keeps ≥ 250 levels;
+  - `ordered_all_matrices_coverage` — every built-in matrix gives 25/50/75 ± 2% light, and greys from 5% to 95% average 50 ± 2% (the old `BAYER_2X2` averaged 40%);
+  - `error_diffusion_keeps_small_error` — a 1% grey gives about 1% light (the old code gave 0%);
+  - `alpha_preserved` — for reduce, error diffusion, ordered and temporal.
+- **Results on `boat.png` → `1BIT_MONITOR_GLOW` with `-a`:** Floyd–Steinberg white fraction 0.275 and `BAYER_8X8` 0.273, against an independently computed target of 0.273 (0.193 before).
+- **Regression check against the Phase 2 build on `boat.png`:**
+  - reduce (Euclidean and Manhattan), grayscale and convolution are byte-identical;
+  - `UNIFORM_HISTOGRAM` reduce changes 1.7% of pixels (float mapping instead of truncation);
+  - error diffusion changes 15–37% of pixels (dots move once error stops being truncated) with the same mean luma ± 1.3;
+  - ordered `BAYER_8X8` changes 2% of pixels; `BAYER_2X2` mean luma goes from 109 to 128 (source 130), which is the bias removal.
+- **Speed:** Floyd–Steinberg to `SLSO8` on `boat.png` drops from 76 ms to 25 ms, because the per-pixel string and vector copies are gone from the new search path.
+- **Warnings:** a clean build now gives 8 first-party warnings (52 before); all are in `image.cpp` and the now-unused `Color::distance_euclidean_squared`.
+
 ### 3.5 Release v1.1.0
 - Generate the README examples again with the fixed binary into `docs/examples/`, and link them from the README so people can see the difference.
+- CHANGELOG: error-diffusion and ordered output changes (bug fixes), `-a` now correct, mirrored asymmetric kernels (Phase 2), alpha kept.
 
 ---
 
@@ -271,12 +308,12 @@ None of these tasks should change any output. Prove that by comparing Phase 3 ou
 - Once this lands, the error cases in `cli_rejects_bad_input` can also be tested in-process.
 
 ### 4.4 Remove duplicated code *(§2.3, point 6)*
-- Combine the raster and serpentine loops into one loop with `dir = ±1` and `x0/x1`. Use signed `int` coordinates so the bounds check is real (REVIEW Q12).
+- ~~Combine the raster and serpentine loops into one loop with `dir = ±1` and `x0/x1`. Use signed `int` coordinates so the bounds check is real (REVIEW Q12).~~ ✅ Done in Phase 3.
 - Share one CSV matrix parser between `Convolve` and `Ordered`. While doing so, validate the 0–255 range for threshold matrices and ignore blank trailing lines.
 - Share one `color_range()` helper (already done in 1.3).
 
 ### 4.5 Speed *(Q5)*
-- Pass by `const&` throughout `Palette::nearest`.
+- Pass by `const&` throughout `Palette::nearest`. *(Phase 3: the new `Palette::nearest_index` already does; the old `Color` distance functions are unused on the dither paths and can be removed.)*
 - Replace the default `std::vector<double>` weights argument with a `static constexpr std::array`.
 - Measure with `-b` before and after, using `boat.png` with Floyd–Steinberg to `SLSO8`.
 
@@ -342,7 +379,7 @@ These are README edits. They can be done at any time, but should match each rele
 |---|---|---|
 | **D1** | `UNIFORM_HISTOGRAM`: rename to match the code, or implement true histogram mapping? | Do Option A in v1.0.1 (a doc fix), and Option B in v2.0.0. |
 | **D2** | Allow combining quantising operations? | Reject combinations (one error message, simplest). Combining two quantisers rarely makes sense. |
-| **D3** | Alpha handling | Pass transparent pixels through unchanged, and keep alpha on output. |
+| **D3** | Alpha handling | ✅ **Decided and implemented in Phase 3:** transparent pixels pass through unchanged, and alpha is kept on output. |
 | **D4** | Should `-a` also apply to `-c`? | Yes, after Phase 3. Blurring in linear light looks more correct. |
 | **D5** | Keep the stochastic PWM? | Keep it under a new name; make the deterministic version the default `PWM`. |
 
@@ -359,7 +396,7 @@ These are README edits. They can be done at any time, but should match each rele
 | 5 | 1.3 UNIFORM_HISTOGRAM arithmetic (B4) | S |
 | 6 | 1.4 Input validation (B6) | M |
 | 7 | ~~2.1 Convolution (B2)~~ ✅ | M |
-| 8 | 3.1–3.3 Float pipeline, gamma, threshold centring (B3, Q1, Q3, Q6) | L |
+| 8 | ~~3.1–3.4 Float pipeline, gamma, threshold centring, alpha (B3, Q1, Q2, Q3, Q6)~~ ✅ | L |
 | 9 | 4.1–4.6 Refactor | L |
 | 10 | 5.x Spec decisions | M–L |
 | — | 6 Docs | S, done alongside each release |
